@@ -164,7 +164,7 @@ export async function POST(request: NextRequest) {
           .update(updateData)
           .eq('id', userId);
 
-        // Upsert subscription record - use provider_subscription_id first, fallback to user_id
+        // Upsert subscription record - uses provider_subscription_id for conflict resolution
         await supabase
           .from('subscriptions')
           .upsert({
