@@ -458,7 +458,7 @@ CREATE TABLE public.subscriptions (
     updated_at TIMESTAMPTZ DEFAULT NOW(),
 
     -- Constraint for upsert operations
-    UNIQUE(user_id)
+    UNIQUE(user_id, provider)
 );
 
 CREATE TABLE public.purchases (
