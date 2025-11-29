@@ -1,0 +1,25 @@
+{
+  "name": "@parallel/database",
+  "version": "1.0.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./client": "./src/client.ts",
+    "./types": "./src/types.ts",
+    "./schema": "./src/schema.sql"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "db:generate": "supabase gen types typescript --local > src/types.ts",
+    "db:push": "supabase db push"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.47.10"
+  },
+  "devDependencies": {
+    "supabase": "^2.10.3",
+    "typescript": "^5.7.2"
+  }
+}

@@ -1,0 +1,127 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
+import Stripe from 'stripe';
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  apiVersion: '2024-11-20.acacia',
+});
+
+// Price IDs (these would be created in Stripe dashboard)
+const PRICE_IDS: Record<string, string> = {
+  price_basic_monthly: process.env.STRIPE_PRICE_BASIC || 'price_xxx',
+  price_pro_monthly: process.env.STRIPE_PRICE_PRO || 'price_xxx',
+  price_unlimited_monthly: process.env.STRIPE_PRICE_UNLIMITED || 'price_xxx',
+  price_studio_monthly: process.env.STRIPE_PRICE_STUDIO || 'price_xxx',
+};
+
+const CREDIT_PRICES: Record<string, { price: number; credits: number }> = {
+  credits_100: { price: 499, credits: 100 },
+  credits_500: { price: 1999, credits: 550 },
+  credits_1000: { price: 3499, credits: 1150 },
+  credits_5000: { price: 14999, credits: 6000 },
+};
+
+export async function POST(request: NextRequest) {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { priceId, packId, mode } = await request.json();
+
+    // Get or create Stripe customer
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('stripe_customer_id, email')
+      .eq('id', user.id)
+      .single();
+
+    let customerId = profile?.stripe_customer_id;
+
+    if (!customerId) {
+      const customer = await stripe.customers.create({
+        email: profile?.email || user.email,
+        metadata: { supabase_user_id: user.id },
+      });
+      customerId = customer.id;
+
+      await supabase
+        .from('profiles')
+        .update({ stripe_customer_id: customerId })
+        .eq('id', user.id);
+    }
+
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+
+    if (mode === 'subscription' && priceId) {
+      // Create subscription checkout session
+      const session = await stripe.checkout.sessions.create({
+        customer: customerId,
+        mode: 'subscription',
+        payment_method_types: ['card'],
+        line_items: [
+          {
+            price: PRICE_IDS[priceId] || priceId,
+            quantity: 1,
+          },
+        ],
+        success_url: `${baseUrl}/settings/billing?success=true&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${baseUrl}/settings/billing?canceled=true`,
+        metadata: {
+          user_id: user.id,
+          type: 'subscription',
+        },
+        subscription_data: {
+          metadata: {
+            user_id: user.id,
+          },
+        },
+      });
+
+      return NextResponse.json({ url: session.url });
+    } else if (mode === 'payment' && packId) {
+      // Create one-time payment for credits
+      const pack = CREDIT_PRICES[packId];
+      if (!pack) {
+        return NextResponse.json({ error: 'Invalid credit pack' }, { status: 400 });
+      }
+
+      const session = await stripe.checkout.sessions.create({
+        customer: customerId,
+        mode: 'payment',
+        payment_method_types: ['card'],
+        line_items: [
+          {
+            price_data: {
+              currency: 'usd',
+              product_data: {
+                name: `${pack.credits} Credits`,
+                description: `Parallel Credits Pack`,
+              },
+              unit_amount: pack.price,
+            },
+            quantity: 1,
+          },
+        ],
+        success_url: `${baseUrl}/settings/billing?success=true&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${baseUrl}/settings/billing?canceled=true`,
+        metadata: {
+          user_id: user.id,
+          type: 'credits',
+          pack_id: packId,
+          credits: pack.credits.toString(),
+        },
+      });
+
+      return NextResponse.json({ url: session.url });
+    }
+
+    return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
+  } catch (error) {
+    console.error('Stripe checkout error:', error);
+    return NextResponse.json({ error: 'Failed to create checkout session' }, { status: 500 });
+  }
+}
