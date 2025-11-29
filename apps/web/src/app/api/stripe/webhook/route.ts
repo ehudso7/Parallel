@@ -26,13 +26,13 @@ const TIER_MAP: Record<string, string> = {
   [process.env.STRIPE_PRICE_STUDIO || 'price_studio']: 'studio',
 };
 
-// Monthly credits per tier
+// Monthly credits per tier (matches subscription pricing)
 const TIER_CREDITS: Record<string, number> = {
   free: 50,
-  basic: 500,
-  pro: 2000,
-  unlimited: 5000,
-  studio: 999999, // Unlimited
+  basic: 500,      // $19.99/mo
+  pro: 2000,       // $29.99/mo
+  unlimited: 5000, // $49.99/mo
+  studio: 10000,   // $99.99/mo
 };
 
 // Check if event has already been processed (idempotency)

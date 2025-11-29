@@ -160,6 +160,11 @@ export interface Database {
         Insert: ScheduledNotificationInsert;
         Update: ScheduledNotificationUpdate;
       };
+      webhook_events: {
+        Row: WebhookEvent;
+        Insert: WebhookEventInsert;
+        Update: WebhookEventUpdate;
+      };
     };
     Functions: {
       search_memories: {
@@ -739,6 +744,22 @@ export type ScheduledNotificationInsert = Partial<ScheduledNotification> & {
   notification_type: string;
 };
 export type ScheduledNotificationUpdate = Partial<ScheduledNotification>;
+
+// Webhook Event (for Stripe webhook idempotency)
+export interface WebhookEvent {
+  id: string;
+  event_id: string;
+  event_type: string;
+  processed_at: string;
+  created_at: string;
+}
+
+export type WebhookEventInsert = Partial<WebhookEvent> & {
+  event_id: string;
+  event_type: string;
+  processed_at: string;
+};
+export type WebhookEventUpdate = Partial<WebhookEvent>;
 
 // Extended types with relations
 export interface PersonaWithWorld extends Persona {
