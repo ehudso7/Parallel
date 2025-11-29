@@ -1,6 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
+  "buildCommand": "cd ../.. && pnpm turbo run build --filter=@parallel/web",
+  "installCommand": "cd ../.. && pnpm install",
+  "outputDirectory": ".next",
+  "ignoreCommand": "cd ../.. && git diff HEAD^ HEAD --quiet -- apps/web packages",
   "regions": ["iad1"],
   "functions": {
     "src/app/api/**/*.ts": {
@@ -9,8 +13,37 @@
     "src/app/api/chat/route.ts": {
       "maxDuration": 120
     },
-    "src/app/api/generate/*/route.ts": {
+    "src/app/api/create/route.ts": {
       "maxDuration": 300
     }
-  }
+  },
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        },
+        {
+          "key": "Access-Control-Allow-Methods",
+          "value": "GET, POST, PUT, DELETE, OPTIONS"
+        },
+        {
+          "key": "Access-Control-Allow-Headers",
+          "value": "Content-Type, Authorization"
+        }
+      ]
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/ingest/static/:path*",
+      "destination": "https://us-assets.i.posthog.com/static/:path*"
+    },
+    {
+      "source": "/ingest/:path*",
+      "destination": "https://us.i.posthog.com/:path*"
+    }
+  ]
 }
