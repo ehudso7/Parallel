@@ -86,39 +86,40 @@ export const checkSubscriptionStatus = async () => {
 };
 
 // Credit packages (one-time purchases)
+// Note: Mobile prices may differ from web due to App Store/Play Store fees
 export const CREDIT_PACKAGES = [
-  { id: 'credits_100', credits: 100, price: '$0.99' },
-  { id: 'credits_500', credits: 500, price: '$3.99' },
-  { id: 'credits_1200', credits: 1200, price: '$7.99' },
-  { id: 'credits_3000', credits: 3000, price: '$14.99' },
-  { id: 'credits_10000', credits: 10000, price: '$39.99' },
+  { id: 'credits_100', credits: 100, price: '$4.99' },
+  { id: 'credits_500', credits: 550, price: '$19.99', bonus: 50 },
+  { id: 'credits_1000', credits: 1150, price: '$34.99', bonus: 150 },
+  { id: 'credits_5000', credits: 6000, price: '$149.99', bonus: 1000 },
 ];
 
-// Subscription tiers
+// Subscription tiers - must match web pricing
 export const SUBSCRIPTION_TIERS = [
   {
     id: 'basic',
     name: 'Basic',
-    price: '$9.99/mo',
+    price: '$19.99/mo',
     credits: 500,
     features: [
       '500 monthly credits',
-      '5 AI personas',
-      'Basic content generation',
-      'Standard support',
+      '5 AI Companions',
+      '10 Worlds',
+      'Voice Messages',
+      'HD Generations',
     ],
   },
   {
     id: 'pro',
     name: 'Pro',
-    price: '$24.99/mo',
+    price: '$29.99/mo',
     credits: 2000,
     features: [
       '2,000 monthly credits',
-      '20 AI personas',
-      'HD content generation',
-      'Priority support',
-      'Early access features',
+      'Unlimited Companions',
+      'All Worlds',
+      'Priority Support',
+      'Early Access Features',
     ],
     popular: true,
   },
@@ -129,25 +130,24 @@ export const SUBSCRIPTION_TIERS = [
     credits: 5000,
     features: [
       '5,000 monthly credits',
-      'Unlimited AI personas',
-      '4K content generation',
-      'API access',
-      'Priority support',
-      'Custom personas',
+      'Everything in Pro',
+      '4K Generations',
+      'Custom Personas',
+      'API Access (Limited)',
     ],
   },
   {
     id: 'studio',
     name: 'Studio',
     price: '$99.99/mo',
-    credits: 999999,
+    credits: 10000,
     features: [
-      'Unlimited credits',
-      'Unlimited everything',
-      'White-label options',
-      'Dedicated support',
-      'Custom integrations',
-      'Team collaboration',
+      '10,000 monthly credits',
+      'Everything in Unlimited',
+      'Full API Access',
+      'White-label Options',
+      'Dedicated Support',
+      'Custom Integrations',
     ],
   },
 ];

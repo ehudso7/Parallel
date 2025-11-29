@@ -64,8 +64,8 @@ export default async function AdminSubscriptionsPage({
 
   // Calculate MRR (Monthly Recurring Revenue)
   const tierPrices: Record<string, number> = {
-    basic: 9.99,
-    pro: 24.99,
+    basic: 19.99,
+    pro: 29.99,
     unlimited: 49.99,
     studio: 99.99,
   };
@@ -104,8 +104,8 @@ export default async function AdminSubscriptionsPage({
   ];
 
   const tierBreakdown = [
-    { tier: 'Basic', count: basicCount || 0, price: '$9.99', color: 'bg-blue-500' },
-    { tier: 'Pro', count: proCount || 0, price: '$24.99', color: 'bg-violet-500' },
+    { tier: 'Basic', count: basicCount || 0, price: '$19.99', color: 'bg-blue-500' },
+    { tier: 'Pro', count: proCount || 0, price: '$29.99', color: 'bg-violet-500' },
     { tier: 'Unlimited', count: unlimitedCount || 0, price: '$49.99', color: 'bg-fuchsia-500' },
     { tier: 'Studio', count: studioCount || 0, price: '$99.99', color: 'bg-amber-500' },
   ];

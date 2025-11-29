@@ -285,13 +285,13 @@ export default function HomePage() {
               <h3 className="text-xl font-semibold mb-2">Pro</h3>
               <p className="text-white/60 mb-4">For serious creators</p>
               <div className="text-4xl font-bold mb-6">
-                $19.99<span className="text-lg text-white/60">/mo</span>
+                $29.99<span className="text-lg text-white/60">/mo</span>
               </div>
               <ul className="space-y-3 mb-8">
                 {[
                   'Unlimited Companions',
                   'All Worlds',
-                  '2000 Credits/month',
+                  '2,000 Credits/month',
                   'Voice Messages',
                   'HD Generations',
                   'Priority Support',
