@@ -11,7 +11,7 @@ const Avatar = React.forwardRef<
     status?: 'online' | 'offline' | 'away' | 'busy';
     ring?: boolean;
   }
->(({ className, size = 'md', status, ring, ...props }, ref) => {
+>(({ className, size = 'md', status, ring, children, ...props }, ref) => {
   const sizeClasses = {
     sm: 'h-8 w-8',
     md: 'h-10 w-10',
@@ -38,7 +38,9 @@ const Avatar = React.forwardRef<
           className
         )}
         {...props}
-      />
+      >
+        {children}
+      </AvatarPrimitive.Root>
       {status && (
         <span
           className={cn(

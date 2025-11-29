@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { createAdminClient } from '@/lib/supabase/server';
 import { Card, CardContent, CardHeader, CardTitle, Badge, Button } from '@parallel/ui';
 import {
@@ -17,10 +18,11 @@ import {
 export default async function AdminModerationPage({
   searchParams,
 }: {
-  searchParams: { page?: string; status?: string };
+  searchParams: Promise<{ page?: string; status?: string }>;
 }) {
+  const params = await searchParams;
   const supabase = createAdminClient();
-  const page = parseInt(searchParams.page || '1');
+  const page = parseInt(params.page || '1');
   const limit = 20;
   const offset = (page - 1) * limit;
 
@@ -58,8 +60,8 @@ export default async function AdminModerationPage({
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1);
 
-  if (searchParams.status) {
-    query = query.eq('status', searchParams.status);
+  if (params.status) {
+    query = query.eq('status', params.status);
   }
 
   const { data: reports, count } = await query;
@@ -102,6 +104,11 @@ export default async function AdminModerationPage({
     }
   };
 
+  const buildPaginationUrl = (newPage: number) => {
+    const statusParam = params.status ? `&status=${params.status}` : '';
+    return `/admin/moderation?page=${newPage}${statusParam}`;
+  };
+
   return (
     <div>
       <div className="flex items-center justify-between mb-8">
@@ -132,17 +139,17 @@ export default async function AdminModerationPage({
       {/* Status Filter */}
       <div className="flex gap-2 mb-6">
         {['all', 'pending', 'reviewing', 'resolved', 'dismissed'].map((status) => (
-          <a
+          <Link
             key={status}
             href={status === 'all' ? '/admin/moderation' : `/admin/moderation?status=${status}`}
             className={`px-4 py-2 rounded-xl text-sm transition ${
-              (status === 'all' && !searchParams.status) || searchParams.status === status
+              (status === 'all' && !params.status) || params.status === status
                 ? 'bg-violet-500 text-white'
                 : 'bg-white/5 text-white/60 hover:bg-white/10'
             }`}
           >
             {status.charAt(0).toUpperCase() + status.slice(1)}
-          </a>
+          </Link>
         ))}
       </div>
 
@@ -238,15 +245,19 @@ export default async function AdminModerationPage({
                 Showing {offset + 1} to {Math.min(offset + limit, count || 0)} of {count || 0}
               </p>
               <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" disabled={page <= 1}>
-                  <ChevronLeft className="w-4 h-4" />
-                </Button>
+                <Link href={buildPaginationUrl(page - 1)}>
+                  <Button variant="outline" size="sm" disabled={page <= 1}>
+                    <ChevronLeft className="w-4 h-4" />
+                  </Button>
+                </Link>
                 <span className="px-4">
-                  Page {page} of {totalPages}
+                  Page {page} of {totalPages || 1}
                 </span>
-                <Button variant="outline" size="sm" disabled={page >= totalPages}>
-                  <ChevronRight className="w-4 h-4" />
-                </Button>
+                <Link href={buildPaginationUrl(page + 1)}>
+                  <Button variant="outline" size="sm" disabled={page >= totalPages}>
+                    <ChevronRight className="w-4 h-4" />
+                  </Button>
+                </Link>
               </div>
             </div>
           )}

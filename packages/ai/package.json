@@ -20,7 +20,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
     "@parallel/database": "workspace:*",
-    "ai": "^4.0.18",
+    "ai": "^5.0.52",
     "openai": "^4.77.0",
     "zod": "^3.24.1"
   },

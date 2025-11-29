@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button, Input } from '@parallel/ui';
@@ -8,10 +8,20 @@ import { toast } from '@parallel/ui';
 import { Sparkles, Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import { getSupabase } from '@/lib/supabase/client';
 
+// Validate redirect URL to prevent open redirect attacks
+function getSafeRedirectUrl(redirect: string | null): string {
+  if (!redirect) return '/dashboard';
+  // Only allow relative paths starting with /
+  if (redirect.startsWith('/') && !redirect.startsWith('//')) {
+    return redirect;
+  }
+  return '/dashboard';
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirect = searchParams.get('redirect') || '/dashboard';
+  const redirect = useMemo(() => getSafeRedirectUrl(searchParams.get('redirect')), [searchParams]);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

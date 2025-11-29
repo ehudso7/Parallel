@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { createAdminClient } from '@/lib/supabase/server';
 import { Card, CardContent, CardHeader, CardTitle, Badge, Button } from '@parallel/ui';
 import {
@@ -14,10 +15,11 @@ import {
 export default async function AdminSubscriptionsPage({
   searchParams,
 }: {
-  searchParams: { page?: string; tier?: string };
+  searchParams: Promise<{ page?: string; tier?: string }>;
 }) {
+  const params = await searchParams;
   const supabase = createAdminClient();
-  const page = parseInt(searchParams.page || '1');
+  const page = parseInt(params.page || '1');
   const limit = 20;
   const offset = (page - 1) * limit;
 
@@ -49,12 +51,12 @@ export default async function AdminSubscriptionsPage({
         display_name,
         username
       )
-    `)
+    `, { count: 'exact' })
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1);
 
-  if (searchParams.tier) {
-    query = query.eq('tier', searchParams.tier);
+  if (params.tier) {
+    query = query.eq('tier', params.tier);
   }
 
   const { data: subscriptions, count } = await query;
@@ -107,6 +109,11 @@ export default async function AdminSubscriptionsPage({
     { tier: 'Unlimited', count: unlimitedCount || 0, price: '$49.99', color: 'bg-fuchsia-500' },
     { tier: 'Studio', count: studioCount || 0, price: '$99.99', color: 'bg-amber-500' },
   ];
+
+  const buildPaginationUrl = (newPage: number) => {
+    const searchParamsStr = params.tier ? `&tier=${params.tier}` : '';
+    return `/admin/subscriptions?page=${newPage}${searchParamsStr}`;
+  };
 
   return (
     <div>
@@ -166,17 +173,17 @@ export default async function AdminSubscriptionsPage({
             <CardTitle>All Subscriptions</CardTitle>
             <div className="flex gap-2">
               {['all', 'basic', 'pro', 'unlimited', 'studio'].map((tier) => (
-                <a
+                <Link
                   key={tier}
                   href={tier === 'all' ? '/admin/subscriptions' : `/admin/subscriptions?tier=${tier}`}
                   className={`px-3 py-1 rounded-lg text-sm transition ${
-                    (tier === 'all' && !searchParams.tier) || searchParams.tier === tier
+                    (tier === 'all' && !params.tier) || params.tier === tier
                       ? 'bg-violet-500 text-white'
                       : 'bg-white/5 text-white/60 hover:bg-white/10'
                   }`}
                 >
                   {tier.charAt(0).toUpperCase() + tier.slice(1)}
-                </a>
+                </Link>
               ))}
             </div>
           </div>
@@ -247,15 +254,19 @@ export default async function AdminSubscriptionsPage({
               Showing {offset + 1} to {Math.min(offset + limit, count || 0)} of {count || 0}
             </p>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" disabled={page <= 1}>
-                <ChevronLeft className="w-4 h-4" />
-              </Button>
+              <Link href={buildPaginationUrl(page - 1)}>
+                <Button variant="outline" size="sm" disabled={page <= 1}>
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+              </Link>
               <span className="px-4">
-                Page {page} of {totalPages}
+                Page {page} of {totalPages || 1}
               </span>
-              <Button variant="outline" size="sm" disabled={page >= totalPages}>
-                <ChevronRight className="w-4 h-4" />
-              </Button>
+              <Link href={buildPaginationUrl(page + 1)}>
+                <Button variant="outline" size="sm" disabled={page >= totalPages}>
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </Link>
             </div>
           </div>
         </CardContent>

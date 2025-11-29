@@ -692,8 +692,37 @@ CREATE TABLE public.scheduled_notifications (
 );
 
 -- ===========================================
+-- WEBHOOK IDEMPOTENCY TABLE
+-- ===========================================
+
+CREATE TABLE public.webhook_events (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    event_id TEXT NOT NULL UNIQUE,
+    event_type TEXT NOT NULL,
+    processed_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX webhook_events_event_id_idx ON public.webhook_events(event_id);
+
+-- ===========================================
 -- FUNCTIONS & TRIGGERS
 -- ===========================================
+
+-- Atomic credit increment function to prevent race conditions
+CREATE OR REPLACE FUNCTION increment_credits(p_user_id UUID, p_amount INTEGER)
+RETURNS INTEGER AS $$
+DECLARE
+    v_new_balance INTEGER;
+BEGIN
+    UPDATE public.profiles
+    SET credits_balance = credits_balance + p_amount
+    WHERE id = p_user_id
+    RETURNING credits_balance INTO v_new_balance;
+
+    RETURN v_new_balance;
+END;
+$$ language 'plpgsql' SECURITY DEFINER;
 
 -- Update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -897,6 +926,49 @@ CREATE POLICY "Users can view own credit_transactions" ON public.credit_transact
 
 -- Push tokens policies
 CREATE POLICY "Users can manage own push_tokens" ON public.push_tokens FOR ALL USING (auth.uid() = user_id);
+
+-- User preferences policies
+CREATE POLICY "Users can view own preferences" ON public.user_preferences FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can create own preferences" ON public.user_preferences FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update own preferences" ON public.user_preferences FOR UPDATE USING (auth.uid() = user_id);
+
+-- User worlds policies
+CREATE POLICY "Users can view own user_worlds" ON public.user_worlds FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can create own user_worlds" ON public.user_worlds FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update own user_worlds" ON public.user_worlds FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "Users can delete own user_worlds" ON public.user_worlds FOR DELETE USING (auth.uid() = user_id);
+
+-- Referrals policies
+CREATE POLICY "Users can view referrals they created or received" ON public.referrals FOR SELECT
+    USING (auth.uid() = referrer_id OR auth.uid() = referred_id);
+CREATE POLICY "Users can create referrals as referrer" ON public.referrals FOR INSERT WITH CHECK (auth.uid() = referrer_id);
+
+-- Daily rewards policies
+CREATE POLICY "Users can view own daily_rewards" ON public.daily_rewards FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can claim own daily_rewards" ON public.daily_rewards FOR UPDATE USING (auth.uid() = user_id);
+
+-- Boosts policies
+CREATE POLICY "Users can view own boosts" ON public.boosts FOR SELECT USING (auth.uid() = user_id);
+
+-- Scheduled notifications policies
+ALTER TABLE public.scheduled_notifications ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can view own scheduled_notifications" ON public.scheduled_notifications FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can create own scheduled_notifications" ON public.scheduled_notifications FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can delete own scheduled_notifications" ON public.scheduled_notifications FOR DELETE USING (auth.uid() = user_id);
+
+-- Content reports policies
+ALTER TABLE public.content_reports ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can view own content_reports" ON public.content_reports FOR SELECT USING (auth.uid() = reporter_id);
+CREATE POLICY "Users can create content_reports" ON public.content_reports FOR INSERT WITH CHECK (auth.uid() = reporter_id);
+
+-- Admin users policies (admin-only access via service role, users can check if they are admin)
+ALTER TABLE public.admin_users ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can view own admin status" ON public.admin_users FOR SELECT USING (auth.uid() = user_id);
+
+-- Analytics events policies (insert-only for users, read via service role)
+ALTER TABLE public.analytics_events ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can create own analytics_events" ON public.analytics_events FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can view own analytics_events" ON public.analytics_events FOR SELECT USING (auth.uid() = user_id);
 
 -- ===========================================
 -- INDEXES FOR PERFORMANCE

@@ -1,7 +1,7 @@
+import Link from 'next/link';
 import { createAdminClient } from '@/lib/supabase/server';
-import { Card, CardContent, CardHeader, CardTitle, Badge, Button, Input } from '@parallel/ui';
+import { Card, CardContent, Badge, Button } from '@parallel/ui';
 import {
-  Users,
   Search,
   Filter,
   MoreVertical,
@@ -15,10 +15,11 @@ import {
 export default async function AdminUsersPage({
   searchParams,
 }: {
-  searchParams: { page?: string; search?: string };
+  searchParams: Promise<{ page?: string; search?: string }>;
 }) {
+  const params = await searchParams;
   const supabase = createAdminClient();
-  const page = parseInt(searchParams.page || '1');
+  const page = parseInt(params.page || '1');
   const limit = 20;
   const offset = (page - 1) * limit;
 
@@ -29,12 +30,19 @@ export default async function AdminUsersPage({
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1);
 
-  if (searchParams.search) {
-    query = query.or(`email.ilike.%${searchParams.search}%,username.ilike.%${searchParams.search}%`);
+  if (params.search) {
+    // Escape special characters for LIKE patterns
+    const sanitized = params.search.replace(/[%_\\]/g, '\\$&');
+    query = query.or(`email.ilike.%${sanitized}%,username.ilike.%${sanitized}%`);
   }
 
   const { data: users, count } = await query;
   const totalPages = Math.ceil((count || 0) / limit);
+
+  const buildPaginationUrl = (newPage: number) => {
+    const searchParam = params.search ? `&search=${encodeURIComponent(params.search)}` : '';
+    return `/admin/users?page=${newPage}${searchParam}`;
+  };
 
   return (
     <div>
@@ -57,7 +65,7 @@ export default async function AdminUsersPage({
             type="text"
             name="search"
             placeholder="Search users by email or username..."
-            defaultValue={searchParams.search}
+            defaultValue={params.search}
             className="w-full h-12 pl-12 pr-4 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
           />
         </form>
@@ -138,21 +146,25 @@ export default async function AdminUsersPage({
               Showing {offset + 1} to {Math.min(offset + limit, count || 0)} of {count || 0} users
             </p>
             <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page <= 1}
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </Button>
-              <span className="px-4">Page {page} of {totalPages}</span>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page >= totalPages}
-              >
-                <ChevronRight className="w-4 h-4" />
-              </Button>
+              <Link href={buildPaginationUrl(page - 1)}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page <= 1}
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+              </Link>
+              <span className="px-4">Page {page} of {totalPages || 1}</span>
+              <Link href={buildPaginationUrl(page + 1)}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page >= totalPages}
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </Link>
             </div>
           </div>
         </CardContent>

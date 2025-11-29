@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { Button, Card, CardContent, Badge, Avatar, AvatarFallback, Tabs, TabsList, TabsTrigger, TabsContent } from '@parallel/ui';
 import {
@@ -18,6 +19,10 @@ export default async function PersonasPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
+  if (!user) {
+    redirect('/login?redirect=/personas');
+  }
+
   // Fetch user's personas
   const { data: userPersonas } = await supabase
     .from('user_personas')
@@ -25,7 +30,7 @@ export default async function PersonasPage() {
       *,
       persona:personas(*)
     `)
-    .eq('user_id', user!.id)
+    .eq('user_id', user.id)
     .order('last_interaction_at', { ascending: false });
 
   // Fetch public/featured personas for discovery
