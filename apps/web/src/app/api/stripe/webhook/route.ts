@@ -27,21 +27,31 @@ const TIER_CREDITS: Record<string, number> = {
 
 // Check if event has already been processed (idempotency)
 async function isEventProcessed(supabase: ReturnType<typeof createAdminClient>, eventId: string): Promise<boolean> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('webhook_events')
     .select('id')
     .eq('event_id', eventId)
     .single();
+
+  // PGRST116 = "No rows found" which means not processed
+  if (error && error.code !== 'PGRST116') {
+    console.error('Error checking webhook event:', error);
+  }
   return !!data;
 }
 
 // Mark event as processed
 async function markEventProcessed(supabase: ReturnType<typeof createAdminClient>, eventId: string, eventType: string): Promise<void> {
-  await supabase.from('webhook_events').insert({
+  const { error } = await supabase.from('webhook_events').insert({
     event_id: eventId,
     event_type: eventType,
     processed_at: new Date().toISOString(),
   });
+
+  // 23505 = unique constraint violation (duplicate) - already marked by concurrent process
+  if (error && error.code !== '23505') {
+    console.error('Error marking webhook event processed:', error);
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -75,6 +85,7 @@ export async function POST(request: NextRequest) {
         if (session.metadata?.type === 'credits') {
           // Handle credit purchase using atomic increment
           const credits = parseInt(session.metadata.credits || '0');
+          let finalBalance: number;
 
           // Use atomic RPC to prevent race conditions
           const { data: newBalance, error: rpcError } = await supabase.rpc('increment_credits', {
@@ -83,7 +94,8 @@ export async function POST(request: NextRequest) {
           });
 
           if (rpcError) {
-            // Fallback to non-atomic if RPC doesn't exist
+            // Fallback to non-atomic if RPC doesn't exist (race condition possible)
+            console.warn('increment_credits RPC unavailable, using fallback:', rpcError.message);
             const { data: profile } = await supabase
               .from('profiles')
               .select('credits_balance')
@@ -91,11 +103,14 @@ export async function POST(request: NextRequest) {
               .single();
 
             const calculatedBalance = (profile?.credits_balance || 0) + credits;
+            finalBalance = calculatedBalance;
 
             await supabase
               .from('profiles')
               .update({ credits_balance: calculatedBalance })
               .eq('id', userId);
+          } else {
+            finalBalance = typeof newBalance === 'number' ? newBalance : credits;
           }
 
           // Record purchase
@@ -108,8 +123,7 @@ export async function POST(request: NextRequest) {
             provider_transaction_id: session.payment_intent as string,
           });
 
-          // Record transaction
-          const finalBalance = typeof newBalance === 'number' ? newBalance : credits;
+          // Record transaction with correct balance
           await supabase.from('credit_transactions').insert({
             user_id: userId,
             amount: credits,
@@ -150,8 +164,8 @@ export async function POST(request: NextRequest) {
           .update(updateData)
           .eq('id', userId);
 
-        // Upsert subscription record using provider_subscription_id for conflict
-        const { error: upsertError } = await supabase
+        // Upsert subscription record - use provider_subscription_id first, fallback to user_id
+        await supabase
           .from('subscriptions')
           .upsert({
             user_id: userId,
@@ -164,28 +178,8 @@ export async function POST(request: NextRequest) {
             current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
             current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
           }, {
-            onConflict: 'provider_subscription_id',
-            ignoreDuplicates: false,
+            onConflict: 'user_id',
           });
-
-        // If upsert fails on provider_subscription_id, try user_id
-        if (upsertError) {
-          await supabase
-            .from('subscriptions')
-            .upsert({
-              user_id: userId,
-              tier,
-              status: subscription.status,
-              provider: 'stripe',
-              provider_subscription_id: subscription.id,
-              provider_customer_id: subscription.customer as string,
-              price_amount: subscription.items.data[0]?.price.unit_amount! / 100,
-              current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-              current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
-            }, {
-              onConflict: 'user_id',
-            });
-        }
 
         break;
       }

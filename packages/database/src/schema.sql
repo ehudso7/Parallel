@@ -435,7 +435,7 @@ CREATE TABLE public.subscriptions (
 
     -- Payment Provider
     provider TEXT NOT NULL, -- stripe, revenuecat, apple, google
-    provider_subscription_id TEXT,
+    provider_subscription_id TEXT UNIQUE,
     provider_customer_id TEXT,
 
     -- Pricing
@@ -455,7 +455,10 @@ CREATE TABLE public.subscriptions (
     metadata JSONB DEFAULT '{}',
 
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+
+    -- Constraint for upsert operations
+    UNIQUE(user_id)
 );
 
 CREATE TABLE public.purchases (
