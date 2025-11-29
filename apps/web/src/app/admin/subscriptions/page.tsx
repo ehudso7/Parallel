@@ -254,19 +254,31 @@ export default async function AdminSubscriptionsPage({
               Showing {offset + 1} to {Math.min(offset + limit, count || 0)} of {count || 0}
             </p>
             <div className="flex items-center gap-2">
-              <Link href={buildPaginationUrl(page - 1)}>
-                <Button variant="outline" size="sm" disabled={page <= 1}>
+              {page <= 1 ? (
+                <Button variant="outline" size="sm" disabled>
                   <ChevronLeft className="w-4 h-4" />
                 </Button>
-              </Link>
+              ) : (
+                <Link href={buildPaginationUrl(page - 1)}>
+                  <Button variant="outline" size="sm">
+                    <ChevronLeft className="w-4 h-4" />
+                  </Button>
+                </Link>
+              )}
               <span className="px-4">
                 Page {page} of {totalPages || 1}
               </span>
-              <Link href={buildPaginationUrl(page + 1)}>
-                <Button variant="outline" size="sm" disabled={page >= totalPages}>
+              {page >= totalPages ? (
+                <Button variant="outline" size="sm" disabled>
                   <ChevronRight className="w-4 h-4" />
                 </Button>
-              </Link>
+              ) : (
+                <Link href={buildPaginationUrl(page + 1)}>
+                  <Button variant="outline" size="sm">
+                    <ChevronRight className="w-4 h-4" />
+                  </Button>
+                </Link>
+              )}
             </div>
           </div>
         </CardContent>
