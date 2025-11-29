@@ -3,13 +3,24 @@ import { NextResponse, type NextRequest } from 'next/server';
 import type { Database } from '@parallel/database';
 
 export async function updateSession(request: NextRequest) {
+  // Check for required environment variables
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    // In development or if env vars are missing, allow request to proceed
+    // This prevents middleware from crashing the entire app
+    console.warn('Supabase environment variables not configured');
+    return NextResponse.next({ request });
+  }
+
   let supabaseResponse = NextResponse.next({
     request,
   });
 
   const supabase = createServerClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    supabaseUrl,
+    supabaseAnonKey,
     {
       cookies: {
         getAll() {
