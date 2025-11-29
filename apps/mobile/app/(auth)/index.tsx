@@ -1,12 +1,9 @@
-import { View, Text, Pressable, StyleSheet, Dimensions } from 'react-native';
-import { Link, router } from 'expo-router';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Image } from 'expo-image';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useAuth } from '@/providers/AuthProvider';
 import { useEffect } from 'react';
-
-const { width, height } = Dimensions.get('window');
 
 export default function WelcomeScreen() {
   const { user, loading } = useAuth();

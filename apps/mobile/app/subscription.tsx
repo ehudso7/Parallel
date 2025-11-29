@@ -103,7 +103,7 @@ export default function SubscriptionScreen() {
 
         {/* Plans */}
         <Animated.View entering={FadeInDown.delay(200)}>
-          {SUBSCRIPTION_TIERS.map((tier, index) => (
+          {SUBSCRIPTION_TIERS.map((tier) => (
             <Pressable
               key={tier.id}
               style={[

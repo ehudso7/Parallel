@@ -1,128 +1,165 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { MemoryManager } from '../memory/manager';
 
-// Mock Supabase
-vi.mock('@supabase/supabase-js', () => ({
-  createClient: vi.fn(() => ({
-    from: vi.fn(() => ({
-      insert: vi.fn(() => ({ data: null, error: null })),
-      select: vi.fn(() => ({
-        eq: vi.fn(() => ({
-          order: vi.fn(() => ({
-            limit: vi.fn(() => ({
-              data: [
-                {
-                  id: '1',
-                  content: 'Test memory 1',
-                  importance: 0.8,
-                  created_at: new Date().toISOString(),
-                },
-                {
-                  id: '2',
-                  content: 'Test memory 2',
-                  importance: 0.6,
-                  created_at: new Date().toISOString(),
-                },
-              ],
-              error: null,
-            })),
-          })),
-        })),
-      })),
-      rpc: vi.fn(() => ({
-        data: [
-          {
-            id: '1',
-            content: 'Similar memory 1',
-            similarity: 0.9,
-          },
-        ],
-        error: null,
-      })),
-    })),
-  })),
-}));
-
-// Mock OpenAI for embeddings
-vi.mock('openai', () => ({
-  default: vi.fn().mockImplementation(() => ({
+// Mock the entire openai provider module
+vi.mock('../providers/openai', () => ({
+  getOpenAIClient: vi.fn(() => ({
     embeddings: {
       create: vi.fn().mockResolvedValue({
         data: [{ embedding: new Array(1536).fill(0.1) }],
       }),
     },
+    chat: {
+      completions: {
+        create: vi.fn().mockResolvedValue({
+          choices: [{ message: { content: 'Summarized memory content' } }],
+        }),
+      },
+    },
   })),
+  generateEmbedding: vi.fn().mockResolvedValue(new Array(1536).fill(0.1)),
 }));
 
 describe('MemoryManager', () => {
-  let memoryManager: MemoryManager;
-
   beforeEach(() => {
-    memoryManager = new MemoryManager({
-      userId: 'test-user-1',
-      personaId: 'test-persona-1',
-    });
+    vi.clearAllMocks();
+    vi.resetModules();
   });
 
-  it('should create memory manager with correct configuration', () => {
+  it('should create memory manager with correct configuration', async () => {
+    const { MemoryManager } = await import('../memory/manager');
+    const memoryManager = new MemoryManager('test-user-1', 'test-persona-1');
     expect(memoryManager).toBeDefined();
   });
 
-  it('should add a new memory', async () => {
-    const result = await memoryManager.addMemory({
+  it('should store a new memory', async () => {
+    const { MemoryManager } = await import('../memory/manager');
+    const memoryManager = new MemoryManager('test-user-1', 'test-persona-1');
+
+    const result = await memoryManager.storeMemory({
       content: 'User mentioned they love hiking',
       type: 'fact',
       importance: 0.7,
     });
 
     expect(result).toBeDefined();
+    expect(result.content).toBe('User mentioned they love hiking');
+    expect(result.type).toBe('fact');
+    expect(result.importance).toBe(0.7);
   });
 
-  it('should retrieve recent memories', async () => {
-    const memories = await memoryManager.getRecentMemories(10);
+  it('should retrieve all memories', async () => {
+    const { MemoryManager } = await import('../memory/manager');
+    const memoryManager = new MemoryManager('test-user-1', 'test-persona-1');
+
+    const memories = memoryManager.getAllMemories();
 
     expect(memories).toBeDefined();
     expect(Array.isArray(memories)).toBe(true);
   });
 
-  it('should search memories by semantic similarity', async () => {
-    const memories = await memoryManager.searchMemories('hiking in mountains');
+  it('should retrieve relevant memories by context', async () => {
+    const { MemoryManager } = await import('../memory/manager');
+    const memoryManager = new MemoryManager('test-user-1', 'test-persona-1');
+
+    // First store some memories
+    await memoryManager.storeMemory({
+      content: 'User loves hiking in mountains',
+      type: 'preference',
+      importance: 0.8,
+    });
+
+    const memories = await memoryManager.retrieveRelevantMemories('hiking in mountains');
 
     expect(memories).toBeDefined();
     expect(Array.isArray(memories)).toBe(true);
   });
 
-  it('should categorize memory types correctly', () => {
-    const factMemory = memoryManager.categorizeMemory('User said their birthday is March 15th');
-    const emotionMemory = memoryManager.categorizeMemory("User seemed really happy when talking about their dog");
-    const preferenceMemory = memoryManager.categorizeMemory('User prefers morning conversations');
+  it('should get memories by type', async () => {
+    const { MemoryManager } = await import('../memory/manager');
+    const memoryManager = new MemoryManager('test-user-1', 'test-persona-1');
 
-    expect(factMemory.type).toBe('fact');
-    expect(emotionMemory.type).toBe('emotion');
-    expect(preferenceMemory.type).toBe('preference');
+    await memoryManager.storeMemory({
+      content: 'User birthday is March 15th',
+      type: 'fact',
+      importance: 0.9,
+    });
+
+    await memoryManager.storeMemory({
+      content: 'User prefers morning conversations',
+      type: 'preference',
+      importance: 0.7,
+    });
+
+    const facts = memoryManager.getMemoriesByType('fact');
+    expect(facts.every((m) => m.type === 'fact')).toBe(true);
+
+    const preferences = memoryManager.getMemoriesByType('preference');
+    expect(preferences.every((m) => m.type === 'preference')).toBe(true);
   });
 
-  it('should calculate memory importance correctly', () => {
-    const highImportance = memoryManager.calculateImportance(
-      'User shared that their parent passed away recently'
-    );
-    const lowImportance = memoryManager.calculateImportance(
-      'User mentioned the weather is nice'
-    );
+  it('should delete a memory', async () => {
+    const { MemoryManager } = await import('../memory/manager');
+    const memoryManager = new MemoryManager('test-user-1', 'test-persona-1');
 
-    expect(highImportance).toBeGreaterThan(lowImportance);
+    const memory = await memoryManager.storeMemory({
+      content: 'Temporary memory',
+      type: 'fact',
+      importance: 0.5,
+    });
+
+    const deleted = memoryManager.deleteMemory(memory.id);
+    expect(deleted).toBe(true);
+
+    const allMemories = memoryManager.getAllMemories();
+    expect(allMemories.find((m) => m.id === memory.id)).toBeUndefined();
   });
 
-  it('should consolidate memories over time', async () => {
-    const consolidatedMemories = await memoryManager.consolidateMemories();
+  it('should clear all memories', async () => {
+    const { MemoryManager } = await import('../memory/manager');
+    const memoryManager = new MemoryManager('test-user-1', 'test-persona-1');
 
-    expect(consolidatedMemories).toBeDefined();
+    await memoryManager.storeMemory({
+      content: 'Memory 1',
+      type: 'fact',
+      importance: 0.5,
+    });
+
+    await memoryManager.storeMemory({
+      content: 'Memory 2',
+      type: 'preference',
+      importance: 0.6,
+    });
+
+    memoryManager.clearAllMemories();
+
+    const memories = memoryManager.getAllMemories();
+    expect(memories.length).toBe(0);
   });
 
-  it('should generate memory summary', async () => {
-    const summary = await memoryManager.generateSummary();
+  it('should export and import memories', async () => {
+    const { MemoryManager } = await import('../memory/manager');
+    const memoryManager = new MemoryManager('test-user-1', 'test-persona-1');
 
-    expect(summary).toBeDefined();
-    expect(typeof summary).toBe('string');
+    await memoryManager.storeMemory({
+      content: 'Exportable memory',
+      type: 'fact',
+      importance: 0.7,
+    });
+
+    const exported = memoryManager.exportMemories();
+    expect(typeof exported).toBe('string');
+
+    // Clear and reimport
+    memoryManager.clearAllMemories();
+    const importedCount = memoryManager.importMemories(exported);
+    expect(importedCount).toBeGreaterThan(0);
+  });
+
+  it('should consolidate memories', async () => {
+    const { MemoryManager } = await import('../memory/manager');
+    const memoryManager = new MemoryManager('test-user-1', 'test-persona-1');
+
+    const consolidatedCount = await memoryManager.consolidateMemories();
+    expect(typeof consolidatedCount).toBe('number');
   });
 });

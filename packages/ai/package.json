@@ -12,10 +12,11 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src/",
-    "lint:fix": "eslint src/ --fix",
+    "lint": "eslint src/ --config ../../eslint.config.mjs",
+    "lint:fix": "eslint src/ --config ../../eslint.config.mjs --fix",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",

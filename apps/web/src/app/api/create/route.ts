@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
     // Check user credits
     const { data: profile } = await supabase
       .from('profiles')
-      .select('credits_balance, subscription_tier')
+      .select('credits_balance, subscription_tier, lifetime_credits_used')
       .eq('id', user.id)
       .single();
 
@@ -100,7 +100,7 @@ export async function POST(request: NextRequest) {
           });
           break;
 
-        case 'image':
+        case 'image': {
           const dimensions = {
             square: { width: 1024, height: 1024 },
             portrait: { width: 1024, height: 1792 },
@@ -114,6 +114,7 @@ export async function POST(request: NextRequest) {
             ...size,
           });
           break;
+        }
 
         case 'meme':
           result = await creator.generateMeme(prompt);

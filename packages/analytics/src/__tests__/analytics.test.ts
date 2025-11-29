@@ -1,20 +1,29 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { analytics, initAnalytics, trackEvent, identifyUser, resetUser } from '../client';
 import { AnalyticsEvents } from '../events';
 
-// Mock posthog-js
+// Create mock functions that persist across tests
+const mockInit = vi.fn();
+const mockIdentify = vi.fn();
+const mockReset = vi.fn();
+const mockCapture = vi.fn();
+const mockPeopleSet = vi.fn();
+const mockPeopleSetOnce = vi.fn();
+const mockIsFeatureEnabled = vi.fn(() => false);
+const mockGetFeatureFlag = vi.fn(() => undefined);
+
+// Mock posthog-js before importing client
 vi.mock('posthog-js', () => ({
   default: {
-    init: vi.fn(),
-    identify: vi.fn(),
-    reset: vi.fn(),
-    capture: vi.fn(),
+    init: mockInit,
+    identify: mockIdentify,
+    reset: mockReset,
+    capture: mockCapture,
     people: {
-      set: vi.fn(),
-      set_once: vi.fn(),
+      set: mockPeopleSet,
+      set_once: mockPeopleSetOnce,
     },
-    isFeatureEnabled: vi.fn(() => false),
-    getFeatureFlag: vi.fn(() => undefined),
+    isFeatureEnabled: mockIsFeatureEnabled,
+    getFeatureFlag: mockGetFeatureFlag,
   },
 }));
 
@@ -22,21 +31,23 @@ describe('Analytics Client', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     // Reset window for client-side tests
-    global.window = {} as any;
+    global.window = {} as Window & typeof globalThis;
+    // Reset the initialized state by re-importing the module
+    vi.resetModules();
   });
 
   afterEach(() => {
-    // @ts-ignore
+    // @ts-expect-error - Intentionally deleting window for test cleanup
     delete global.window;
   });
 
   describe('initAnalytics', () => {
-    it('should initialize PostHog with correct configuration', () => {
-      const posthog = require('posthog-js').default;
+    it('should initialize PostHog with correct configuration', async () => {
+      const { initAnalytics } = await import('../client');
 
       initAnalytics('test-api-key', { host: 'https://custom.posthog.com' });
 
-      expect(posthog.init).toHaveBeenCalledWith(
+      expect(mockInit).toHaveBeenCalledWith(
         'test-api-key',
         expect.objectContaining({
           api_host: 'https://custom.posthog.com',
@@ -47,8 +58,8 @@ describe('Analytics Client', () => {
   });
 
   describe('identifyUser', () => {
-    it('should identify user with correct properties', () => {
-      const posthog = require('posthog-js').default;
+    it('should identify user with correct properties', async () => {
+      const { identifyUser } = await import('../client');
 
       identifyUser({
         id: 'user-123',
@@ -56,7 +67,7 @@ describe('Analytics Client', () => {
         subscription_tier: 'pro',
       });
 
-      expect(posthog.identify).toHaveBeenCalledWith(
+      expect(mockIdentify).toHaveBeenCalledWith(
         'user-123',
         expect.objectContaining({
           email: 'test@example.com',
@@ -67,12 +78,12 @@ describe('Analytics Client', () => {
   });
 
   describe('trackEvent', () => {
-    it('should capture event with properties', () => {
-      const posthog = require('posthog-js').default;
+    it('should capture event with properties', async () => {
+      const { trackEvent } = await import('../client');
 
       trackEvent('test_event', { property1: 'value1' });
 
-      expect(posthog.capture).toHaveBeenCalledWith(
+      expect(mockCapture).toHaveBeenCalledWith(
         'test_event',
         expect.objectContaining({
           property1: 'value1',
@@ -80,12 +91,12 @@ describe('Analytics Client', () => {
       );
     });
 
-    it('should include timestamp in all events', () => {
-      const posthog = require('posthog-js').default;
+    it('should include timestamp in all events', async () => {
+      const { trackEvent } = await import('../client');
 
       trackEvent('test_event');
 
-      expect(posthog.capture).toHaveBeenCalledWith(
+      expect(mockCapture).toHaveBeenCalledWith(
         'test_event',
         expect.objectContaining({
           timestamp: expect.any(String),
@@ -95,22 +106,22 @@ describe('Analytics Client', () => {
   });
 
   describe('resetUser', () => {
-    it('should reset PostHog identity', () => {
-      const posthog = require('posthog-js').default;
+    it('should reset PostHog identity', async () => {
+      const { resetUser } = await import('../client');
 
       resetUser();
 
-      expect(posthog.reset).toHaveBeenCalled();
+      expect(mockReset).toHaveBeenCalled();
     });
   });
 
   describe('analytics helper functions', () => {
-    it('should track sign up correctly', () => {
-      const posthog = require('posthog-js').default;
+    it('should track sign up correctly', async () => {
+      const { analytics } = await import('../client');
 
       analytics.trackSignUp('user-123', 'email');
 
-      expect(posthog.capture).toHaveBeenCalledWith(
+      expect(mockCapture).toHaveBeenCalledWith(
         AnalyticsEvents.USER_SIGNED_UP,
         expect.objectContaining({
           user_id: 'user-123',
@@ -119,12 +130,12 @@ describe('Analytics Client', () => {
       );
     });
 
-    it('should track subscription view correctly', () => {
-      const posthog = require('posthog-js').default;
+    it('should track subscription view correctly', async () => {
+      const { analytics } = await import('../client');
 
       analytics.trackSubscriptionView('pro');
 
-      expect(posthog.capture).toHaveBeenCalledWith(
+      expect(mockCapture).toHaveBeenCalledWith(
         AnalyticsEvents.SUBSCRIPTION_VIEWED,
         expect.objectContaining({
           tier: 'pro',
@@ -132,12 +143,12 @@ describe('Analytics Client', () => {
       );
     });
 
-    it('should track chat message correctly', () => {
-      const posthog = require('posthog-js').default;
+    it('should track chat message correctly', async () => {
+      const { analytics } = await import('../client');
 
       analytics.trackChatMessage('persona-1', 'companion', 150);
 
-      expect(posthog.capture).toHaveBeenCalledWith(
+      expect(mockCapture).toHaveBeenCalledWith(
         AnalyticsEvents.CHAT_MESSAGE_SENT,
         expect.objectContaining({
           persona_id: 'persona-1',
@@ -147,12 +158,12 @@ describe('Analytics Client', () => {
       );
     });
 
-    it('should track content generation correctly', () => {
-      const posthog = require('posthog-js').default;
+    it('should track content generation correctly', async () => {
+      const { analytics } = await import('../client');
 
       analytics.trackContentGeneration('image', 5, true, 2500);
 
-      expect(posthog.capture).toHaveBeenCalledWith(
+      expect(mockCapture).toHaveBeenCalledWith(
         AnalyticsEvents.CONTENT_GENERATION_COMPLETED,
         expect.objectContaining({
           content_type: 'image',
@@ -162,13 +173,13 @@ describe('Analytics Client', () => {
       );
     });
 
-    it('should track errors correctly', () => {
-      const posthog = require('posthog-js').default;
+    it('should track errors correctly', async () => {
+      const { analytics } = await import('../client');
       const error = new Error('Test error');
 
       analytics.trackError(error, { page: 'chat' });
 
-      expect(posthog.capture).toHaveBeenCalledWith(
+      expect(mockCapture).toHaveBeenCalledWith(
         AnalyticsEvents.ERROR_OCCURRED,
         expect.objectContaining({
           error_message: 'Test error',

@@ -282,7 +282,7 @@ export default function OnboardingPage() {
               </div>
 
               <h1 className="text-3xl font-bold mb-2">Welcome to Parallel!</h1>
-              <p className="text-white/60 mb-8">Let's set up your experience. What should we call you?</p>
+              <p className="text-white/60 mb-8">Let&apos;s set up your experience. What should we call you?</p>
 
               <Input
                 placeholder="Your name"

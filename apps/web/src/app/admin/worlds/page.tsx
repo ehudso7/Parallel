@@ -1,5 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/server';
-import { Card, CardContent, CardHeader, CardTitle, Badge, Button } from '@parallel/ui';
+import { Card, CardContent, Badge, Button } from '@parallel/ui';
 import {
   Globe,
   Users,

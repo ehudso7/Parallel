@@ -7,7 +7,6 @@ import {
   Shield,
   Bell,
   Database,
-  Globe,
   CreditCard,
   Zap,
   Save,

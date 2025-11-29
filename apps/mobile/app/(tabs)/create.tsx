@@ -70,7 +70,7 @@ export default function CreateScreen() {
 
         {/* Creation Types */}
         <Animated.View entering={FadeInDown.delay(200)} style={styles.grid}>
-          {creationTypes.map((type, index) => (
+          {creationTypes.map((type) => (
             <Pressable
               key={type.id}
               style={styles.creationCard}
