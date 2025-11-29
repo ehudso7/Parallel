@@ -165,6 +165,11 @@ export interface Database {
         Insert: WebhookEventInsert;
         Update: WebhookEventUpdate;
       };
+      credit_audit_log: {
+        Row: CreditAuditLog;
+        Insert: CreditAuditLogInsert;
+        Update: CreditAuditLogUpdate;
+      };
     };
     Functions: {
       search_memories: {
@@ -221,6 +226,8 @@ export interface Profile {
   adult_content_enabled: boolean;
   onboarding_completed: boolean;
   onboarding_step: number;
+  is_deleted: boolean;
+  deleted_at: string | null;
   metadata: Json;
   created_at: string;
   updated_at: string;
@@ -760,6 +767,28 @@ export type WebhookEventInsert = Partial<WebhookEvent> & {
   processed_at: string;
 };
 export type WebhookEventUpdate = Partial<WebhookEvent>;
+
+// Credit Audit Log (for compliance and debugging)
+export interface CreditAuditLog {
+  id: string;
+  user_id: string;
+  function_name: string;
+  amount: number;
+  old_balance: number | null;
+  new_balance: number | null;
+  called_by: string | null;
+  ip_address: string | null;
+  user_agent: string | null;
+  metadata: Json;
+  created_at: string;
+}
+
+export type CreditAuditLogInsert = Partial<CreditAuditLog> & {
+  user_id: string;
+  function_name: string;
+  amount: number;
+};
+export type CreditAuditLogUpdate = Partial<CreditAuditLog>;
 
 // Extended types with relations
 export interface PersonaWithWorld extends Persona {
