@@ -2,11 +2,21 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import Stripe from 'stripe';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2025-02-24.acacia',
-});
+// Lazy initialization of Stripe to avoid build-time errors
+let stripeClient: Stripe | null = null;
 
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
+function getStripe(): Stripe {
+  if (!stripeClient) {
+    const apiKey = process.env.STRIPE_SECRET_KEY;
+    if (!apiKey) {
+      throw new Error('STRIPE_SECRET_KEY is not configured');
+    }
+    stripeClient = new Stripe(apiKey, {
+      apiVersion: '2025-02-24.acacia',
+    });
+  }
+  return stripeClient;
+}
 
 // Map Stripe price IDs to subscription tiers
 const TIER_MAP: Record<string, string> = {
@@ -55,6 +65,14 @@ async function markEventProcessed(supabase: ReturnType<typeof createAdminClient>
 }
 
 export async function POST(request: NextRequest) {
+  const stripe = getStripe();
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+  if (!webhookSecret) {
+    console.error('STRIPE_WEBHOOK_SECRET is not configured');
+    return NextResponse.json({ error: 'Webhook secret not configured' }, { status: 500 });
+  }
+
   const body = await request.text();
   const signature = request.headers.get('stripe-signature')!;
 
@@ -164,6 +182,12 @@ export async function POST(request: NextRequest) {
           .update(updateData)
           .eq('id', userId);
 
+        // Get price amount with proper null handling
+        const priceAmount = subscription.items.data[0]?.price.unit_amount;
+        if (priceAmount == null) {
+          console.warn('Missing unit_amount for subscription:', subscription.id);
+        }
+
         // Upsert subscription record - uses provider_subscription_id for conflict resolution
         await supabase
           .from('subscriptions')
@@ -174,7 +198,7 @@ export async function POST(request: NextRequest) {
             provider: 'stripe',
             provider_subscription_id: subscription.id,
             provider_customer_id: subscription.customer as string,
-            price_amount: (subscription.items.data[0]?.price.unit_amount ?? 0) / 100,
+            price_amount: (priceAmount ?? 0) / 100,
             current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
             current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
           }, {
