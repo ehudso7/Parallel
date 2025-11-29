@@ -1,5 +1,6 @@
+import Link from 'next/link';
 import { createAdminClient } from '@/lib/supabase/server';
-import { Card, CardContent, CardHeader, CardTitle, Badge, Button } from '@parallel/ui';
+import { Card, CardContent, Badge, Button } from '@parallel/ui';
 import {
   Image,
   Music,
@@ -16,10 +17,11 @@ import {
 export default async function AdminContentPage({
   searchParams,
 }: {
-  searchParams: { page?: string; type?: string; status?: string };
+  searchParams: Promise<{ page?: string; type?: string; status?: string }>;
 }) {
+  const params = await searchParams;
   const supabase = createAdminClient();
-  const page = parseInt(searchParams.page || '1');
+  const page = parseInt(params.page || '1');
   const limit = 20;
   const offset = (page - 1) * limit;
 
@@ -29,14 +31,12 @@ export default async function AdminContentPage({
     { count: imageCount },
     { count: musicCount },
     { count: videoCount },
-    { count: pendingCount },
     { count: flaggedCount },
   ] = await Promise.all([
     supabase.from('generated_content').select('*', { count: 'exact', head: true }),
     supabase.from('generated_content').select('*', { count: 'exact', head: true }).eq('content_type', 'image'),
     supabase.from('generated_content').select('*', { count: 'exact', head: true }).eq('content_type', 'music'),
     supabase.from('generated_content').select('*', { count: 'exact', head: true }).eq('content_type', 'video'),
-    supabase.from('generated_content').select('*', { count: 'exact', head: true }).eq('status', 'processing'),
     supabase.from('generated_content').select('*', { count: 'exact', head: true }).eq('status', 'flagged'),
   ]);
 
@@ -55,12 +55,12 @@ export default async function AdminContentPage({
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1);
 
-  if (searchParams.type) {
-    query = query.eq('content_type', searchParams.type);
+  if (params.type) {
+    query = query.eq('content_type', params.type);
   }
 
-  if (searchParams.status) {
-    query = query.eq('status', searchParams.status);
+  if (params.status) {
+    query = query.eq('status', params.status);
   }
 
   const { data: content, count } = await query;
@@ -101,6 +101,12 @@ export default async function AdminContentPage({
     }
   };
 
+  const buildPaginationUrl = (newPage: number) => {
+    const typeParam = params.type ? `&type=${params.type}` : '';
+    const statusParam = params.status ? `&status=${params.status}` : '';
+    return `/admin/content?page=${newPage}${typeParam}${statusParam}`;
+  };
+
   return (
     <div>
       <div className="flex items-center justify-between mb-8">
@@ -137,17 +143,17 @@ export default async function AdminContentPage({
       {/* Content Type Filter */}
       <div className="flex gap-2 mb-6">
         {['all', 'image', 'music', 'video'].map((type) => (
-          <a
+          <Link
             key={type}
             href={type === 'all' ? '/admin/content' : `/admin/content?type=${type}`}
             className={`px-4 py-2 rounded-xl text-sm transition ${
-              (type === 'all' && !searchParams.type) || searchParams.type === type
+              (type === 'all' && !params.type) || params.type === type
                 ? 'bg-violet-500 text-white'
                 : 'bg-white/5 text-white/60 hover:bg-white/10'
             }`}
           >
             {type.charAt(0).toUpperCase() + type.slice(1)}
-          </a>
+          </Link>
         ))}
       </div>
 
@@ -204,15 +210,19 @@ export default async function AdminContentPage({
           Showing {offset + 1} to {Math.min(offset + limit, count || 0)} of {count || 0}
         </p>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" disabled={page <= 1}>
-            <ChevronLeft className="w-4 h-4" />
-          </Button>
+          <Link href={buildPaginationUrl(page - 1)}>
+            <Button variant="outline" size="sm" disabled={page <= 1}>
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+          </Link>
           <span className="px-4">
-            Page {page} of {totalPages}
+            Page {page} of {totalPages || 1}
           </span>
-          <Button variant="outline" size="sm" disabled={page >= totalPages}>
-            <ChevronRight className="w-4 h-4" />
-          </Button>
+          <Link href={buildPaginationUrl(page + 1)}>
+            <Button variant="outline" size="sm" disabled={page >= totalPages}>
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+          </Link>
         </div>
       </div>
     </div>

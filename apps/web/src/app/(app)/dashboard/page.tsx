@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { Button, Badge, Card, CardContent } from '@parallel/ui';
 import {
@@ -22,6 +23,10 @@ export default async function DashboardPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
+  if (!user) {
+    redirect('/login?redirect=/dashboard');
+  }
+
   // Fetch user's data
   const [
     { data: profile },
@@ -30,29 +35,29 @@ export default async function DashboardPage() {
     { data: userWorlds },
     { data: recentContent },
   ] = await Promise.all([
-    supabase.from('profiles').select('*').eq('id', user!.id).single(),
+    supabase.from('profiles').select('*').eq('id', user.id).single(),
     supabase
       .from('conversations')
       .select('*, persona:personas(*)')
-      .eq('user_id', user!.id)
+      .eq('user_id', user.id)
       .order('last_message_at', { ascending: false })
       .limit(5),
     supabase
       .from('user_personas')
       .select('*, persona:personas(*)')
-      .eq('user_id', user!.id)
+      .eq('user_id', user.id)
       .order('last_interaction_at', { ascending: false })
       .limit(4),
     supabase
       .from('user_worlds')
       .select('*, world:worlds(*)')
-      .eq('user_id', user!.id)
+      .eq('user_id', user.id)
       .order('last_visit_at', { ascending: false })
       .limit(4),
     supabase
       .from('generated_content')
       .select('*')
-      .eq('user_id', user!.id)
+      .eq('user_id', user.id)
       .eq('status', 'completed')
       .order('created_at', { ascending: false })
       .limit(6),

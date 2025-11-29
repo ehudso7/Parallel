@@ -25,6 +25,25 @@ const TIER_CREDITS: Record<string, number> = {
   studio: 999999, // Unlimited
 };
 
+// Check if event has already been processed (idempotency)
+async function isEventProcessed(supabase: ReturnType<typeof createAdminClient>, eventId: string): Promise<boolean> {
+  const { data } = await supabase
+    .from('webhook_events')
+    .select('id')
+    .eq('event_id', eventId)
+    .single();
+  return !!data;
+}
+
+// Mark event as processed
+async function markEventProcessed(supabase: ReturnType<typeof createAdminClient>, eventId: string, eventType: string): Promise<void> {
+  await supabase.from('webhook_events').insert({
+    event_id: eventId,
+    event_type: eventType,
+    processed_at: new Date().toISOString(),
+  });
+}
+
 export async function POST(request: NextRequest) {
   const body = await request.text();
   const signature = request.headers.get('stripe-signature')!;
@@ -40,6 +59,11 @@ export async function POST(request: NextRequest) {
 
   const supabase = createAdminClient();
 
+  // Idempotency check - skip if already processed
+  if (await isEventProcessed(supabase, event.id)) {
+    return NextResponse.json({ received: true, skipped: true });
+  }
+
   try {
     switch (event.type) {
       case 'checkout.session.completed': {
@@ -49,21 +73,30 @@ export async function POST(request: NextRequest) {
         if (!userId) break;
 
         if (session.metadata?.type === 'credits') {
-          // Handle credit purchase
+          // Handle credit purchase using atomic increment
           const credits = parseInt(session.metadata.credits || '0');
 
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('credits_balance')
-            .eq('id', userId)
-            .single();
+          // Use atomic RPC to prevent race conditions
+          const { data: newBalance, error: rpcError } = await supabase.rpc('increment_credits', {
+            p_user_id: userId,
+            p_amount: credits,
+          });
 
-          const newBalance = (profile?.credits_balance || 0) + credits;
+          if (rpcError) {
+            // Fallback to non-atomic if RPC doesn't exist
+            const { data: profile } = await supabase
+              .from('profiles')
+              .select('credits_balance')
+              .eq('id', userId)
+              .single();
 
-          await supabase
-            .from('profiles')
-            .update({ credits_balance: newBalance })
-            .eq('id', userId);
+            const calculatedBalance = (profile?.credits_balance || 0) + credits;
+
+            await supabase
+              .from('profiles')
+              .update({ credits_balance: calculatedBalance })
+              .eq('id', userId);
+          }
 
           // Record purchase
           await supabase.from('purchases').insert({
@@ -76,10 +109,11 @@ export async function POST(request: NextRequest) {
           });
 
           // Record transaction
+          const finalBalance = typeof newBalance === 'number' ? newBalance : credits;
           await supabase.from('credit_transactions').insert({
             user_id: userId,
             amount: credits,
-            balance_after: newBalance,
+            balance_after: finalBalance,
             source: 'purchase',
             description: `Purchased ${credits} credits`,
           });
@@ -98,20 +132,26 @@ export async function POST(request: NextRequest) {
         const tier = TIER_MAP[priceId] || 'basic';
         const monthlyCredits = TIER_CREDITS[tier] || 500;
 
-        // Update profile
+        // Update profile - only reset credits on create, not update
+        const updateData: Record<string, unknown> = {
+          subscription_tier: tier,
+          subscription_status: subscription.status,
+          subscription_expires_at: new Date(subscription.current_period_end * 1000).toISOString(),
+        };
+
+        // Only reset credits on new subscription
+        if (event.type === 'customer.subscription.created') {
+          updateData.credits_balance = monthlyCredits;
+          updateData.monthly_credits_used = 0;
+        }
+
         await supabase
           .from('profiles')
-          .update({
-            subscription_tier: tier,
-            subscription_status: subscription.status,
-            subscription_expires_at: new Date(subscription.current_period_end * 1000).toISOString(),
-            credits_balance: monthlyCredits,
-            monthly_credits_used: 0,
-          })
+          .update(updateData)
           .eq('id', userId);
 
-        // Upsert subscription record
-        await supabase
+        // Upsert subscription record using provider_subscription_id for conflict
+        const { error: upsertError } = await supabase
           .from('subscriptions')
           .upsert({
             user_id: userId,
@@ -124,8 +164,28 @@ export async function POST(request: NextRequest) {
             current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
             current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
           }, {
-            onConflict: 'user_id',
+            onConflict: 'provider_subscription_id',
+            ignoreDuplicates: false,
           });
+
+        // If upsert fails on provider_subscription_id, try user_id
+        if (upsertError) {
+          await supabase
+            .from('subscriptions')
+            .upsert({
+              user_id: userId,
+              tier,
+              status: subscription.status,
+              provider: 'stripe',
+              provider_subscription_id: subscription.id,
+              provider_customer_id: subscription.customer as string,
+              price_amount: subscription.items.data[0]?.price.unit_amount! / 100,
+              current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
+              current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+            }, {
+              onConflict: 'user_id',
+            });
+        }
 
         break;
       }
@@ -161,7 +221,7 @@ export async function POST(request: NextRequest) {
         const invoice = event.data.object as Stripe.Invoice;
 
         // Reset monthly credits on renewal
-        if (invoice.billing_reason === 'subscription_cycle') {
+        if (invoice.billing_reason === 'subscription_cycle' && invoice.subscription) {
           const subscription = await stripe.subscriptions.retrieve(invoice.subscription as string);
           const userId = subscription.metadata?.user_id;
 
@@ -184,18 +244,25 @@ export async function POST(request: NextRequest) {
 
       case 'invoice.payment_failed': {
         const invoice = event.data.object as Stripe.Invoice;
-        const subscription = await stripe.subscriptions.retrieve(invoice.subscription as string);
-        const userId = subscription.metadata?.user_id;
 
-        if (userId) {
-          await supabase
-            .from('profiles')
-            .update({ subscription_status: 'past_due' })
-            .eq('id', userId);
+        if (invoice.subscription) {
+          const subscription = await stripe.subscriptions.retrieve(invoice.subscription as string);
+          const userId = subscription.metadata?.user_id;
+
+          if (userId) {
+            await supabase
+              .from('profiles')
+              .update({ subscription_status: 'past_due' })
+              .eq('id', userId);
+          }
         }
         break;
       }
     }
+
+    // Mark event as processed for idempotency
+    await markEventProcessed(supabase, event.id, event.type);
+
   } catch (error) {
     console.error('Webhook processing error:', error);
     return NextResponse.json({ error: 'Webhook processing failed' }, { status: 500 });

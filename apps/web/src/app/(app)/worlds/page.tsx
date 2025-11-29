@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { Button, Card, CardContent, Badge, Tabs, TabsList, TabsTrigger, TabsContent } from '@parallel/ui';
 import {
@@ -17,6 +18,10 @@ export default async function WorldsPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
+  if (!user) {
+    redirect('/login?redirect=/worlds');
+  }
+
   // Fetch user's worlds
   const { data: userWorlds } = await supabase
     .from('user_worlds')
@@ -24,7 +29,7 @@ export default async function WorldsPage() {
       *,
       world:worlds(*)
     `)
-    .eq('user_id', user!.id)
+    .eq('user_id', user.id)
     .order('last_visit_at', { ascending: false });
 
   // Fetch featured/public worlds

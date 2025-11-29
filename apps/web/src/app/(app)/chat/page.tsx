@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { Button, Card, CardContent, Badge, Avatar, AvatarFallback } from '@parallel/ui';
 import { Plus, MessageCircle, Search, Star, Clock, Heart, Brain, Flame } from 'lucide-react';
@@ -6,6 +7,10 @@ import { Plus, MessageCircle, Search, Star, Clock, Heart, Brain, Flame } from 'l
 export default async function ChatListPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect('/login?redirect=/chat');
+  }
 
   // Fetch conversations with personas
   const { data: conversations } = await supabase
@@ -15,7 +20,7 @@ export default async function ChatListPage() {
       persona:personas(*),
       world:worlds(*)
     `)
-    .eq('user_id', user!.id)
+    .eq('user_id', user.id)
     .eq('is_archived', false)
     .order('last_message_at', { ascending: false });
 
@@ -26,7 +31,7 @@ export default async function ChatListPage() {
       *,
       persona:personas(*)
     `)
-    .eq('user_id', user!.id)
+    .eq('user_id', user.id)
     .order('last_interaction_at', { ascending: false })
     .limit(6);
 
