@@ -160,7 +160,7 @@ export async function generateImage(
     return {
       id: Date.now().toString(),
       status: 'completed',
-      imageUrls: response.data.map((img) => img.url!),
+      imageUrls: response.data?.map((img) => img.url!) ?? [],
     };
   } catch (error) {
     console.error('Image generation failed:', error);

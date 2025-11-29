@@ -12,6 +12,8 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "lint": "eslint src/ --config ../../eslint.config.mjs",
+    "lint:fix": "eslint src/ --config ../../eslint.config.mjs --fix",
     "db:generate": "supabase gen types typescript --local > src/types.ts",
     "db:push": "supabase db push"
   },

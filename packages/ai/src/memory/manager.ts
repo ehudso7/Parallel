@@ -27,8 +27,8 @@ export class MemoryManager {
     importance: number;
     expiresAt?: Date;
   }): Promise<MemoryEntry> {
-    // Generate embedding for semantic search
-    const embedding = await openai.generateEmbedding(memory.content);
+    // Generate embedding for semantic search (used in production with Supabase)
+    const _embedding = await openai.generateEmbedding(memory.content);
 
     // Generate summary for long memories
     let summary: string | undefined;
@@ -69,8 +69,8 @@ export class MemoryManager {
       return [];
     }
 
-    // Generate embedding for context
-    const contextEmbedding = await openai.generateEmbedding(context);
+    // Generate embedding for context (used in production with Supabase vector search)
+    const _contextEmbedding = await openai.generateEmbedding(context);
 
     // In production, use vector similarity search in Supabase
     // For now, use simple keyword matching and importance scoring

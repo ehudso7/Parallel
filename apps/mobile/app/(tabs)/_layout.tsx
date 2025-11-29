@@ -40,7 +40,7 @@ export default function TabsLayout() {
         name="create"
         options={{
           title: '',
-          tabBarIcon: ({ focused }) => (
+          tabBarIcon: () => (
             <View style={styles.createButton}>
               <LinearGradient
                 colors={['#8b5cf6', '#d946ef']}

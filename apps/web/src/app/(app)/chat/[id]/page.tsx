@@ -12,7 +12,6 @@ import {
   MoreVertical,
   ArrowLeft,
   Globe,
-  Settings,
   Phone,
   Video,
   Heart,
@@ -31,7 +30,7 @@ export default function ChatPage() {
   const router = useRouter();
   const conversationId = params.id as string;
 
-  const [conversation, setConversation] = useState<Conversation | null>(null);
+  const [_conversation, setConversation] = useState<Conversation | null>(null);
   const [persona, setPersona] = useState<Persona | null>(null);
   const [world, setWorld] = useState<World | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -185,7 +184,7 @@ export default function ChatPage() {
 
       // Reload to get proper message IDs
       await loadConversation();
-    } catch (error) {
+    } catch (_error) {
       toast({ title: 'Failed to send message', variant: 'error' });
       // Remove failed messages
       setMessages((prev) => prev.filter((m) => !m.id.startsWith('temp-')));

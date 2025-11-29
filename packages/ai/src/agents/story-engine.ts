@@ -82,12 +82,14 @@ Return as JSON with keys: title, description, setting, mood, openingLine, possib
     const content = response.choices[0]?.message?.content || '{}';
     const scenario = JSON.parse(content);
 
-    this.currentScenario = {
+    const newScenario: StoryScenario = {
       id: Date.now().toString(),
       ...scenario,
     };
 
-    return this.currentScenario;
+    this.currentScenario = newScenario;
+
+    return newScenario;
   }
 
   // Generate a story event/twist

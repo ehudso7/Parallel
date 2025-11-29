@@ -247,7 +247,7 @@ export default async function WorldsPage() {
 
         {/* Favorites */}
         <TabsContent value="favorites">
-          {userWorlds?.filter((uw: any) => uw.is_favorite).length > 0 ? (
+          {(userWorlds?.filter((uw: any) => uw.is_favorite).length ?? 0) > 0 ? (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {userWorlds
                 ?.filter((uw: any) => uw.is_favorite)

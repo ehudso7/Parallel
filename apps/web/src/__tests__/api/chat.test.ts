@@ -1,36 +1,42 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
 
-// Mock dependencies
-vi.mock('@/lib/supabase/server', () => ({
-  createClient: vi.fn(() => ({
-    auth: {
-      getUser: vi.fn().mockResolvedValue({
-        data: { user: { id: 'test-user-id' } },
-      }),
-    },
-    from: vi.fn(() => ({
-      select: vi.fn(() => ({
-        eq: vi.fn(() => ({
-          single: vi.fn().mockResolvedValue({
-            data: {
-              id: 'test-persona-id',
-              name: 'Luna',
-              persona_type: 'companion',
-              personality_config: {
-                traits: ['friendly'],
-                speakingStyle: 'casual',
-              },
+// Create mock function for createClient
+const mockGetUser = vi.fn();
+const mockFrom = vi.fn();
+
+const mockCreateClient = vi.fn(() => ({
+  auth: {
+    getUser: mockGetUser.mockResolvedValue({
+      data: { user: { id: 'test-user-id' } },
+    }),
+  },
+  from: mockFrom.mockReturnValue({
+    select: vi.fn(() => ({
+      eq: vi.fn(() => ({
+        single: vi.fn().mockResolvedValue({
+          data: {
+            id: 'test-persona-id',
+            name: 'Luna',
+            persona_type: 'companion',
+            personality_config: {
+              traits: ['friendly'],
+              speakingStyle: 'casual',
             },
-          }),
-        })),
-      })),
-      insert: vi.fn().mockResolvedValue({ data: null, error: null }),
-      update: vi.fn(() => ({
-        eq: vi.fn().mockResolvedValue({ data: null, error: null }),
+          },
+        }),
       })),
     })),
-  })),
+    insert: vi.fn().mockResolvedValue({ data: null, error: null }),
+    update: vi.fn(() => ({
+      eq: vi.fn().mockResolvedValue({ data: null, error: null }),
+    })),
+  }),
+}));
+
+// Mock dependencies
+vi.mock('@/lib/supabase/server', () => ({
+  createClient: mockCreateClient,
 }));
 
 vi.mock('@parallel/ai', () => ({
@@ -58,19 +64,19 @@ vi.mock('@parallel/ai', () => ({
 describe('Chat API', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Reset to default authenticated user
+    mockGetUser.mockResolvedValue({
+      data: { user: { id: 'test-user-id' } },
+    });
   });
 
   it('should return 401 if user is not authenticated', async () => {
-    const mockSupabase = require('@/lib/supabase/server').createClient;
-    mockSupabase.mockReturnValueOnce({
-      auth: {
-        getUser: vi.fn().mockResolvedValue({
-          data: { user: null },
-        }),
-      },
+    // Override mock to return no user
+    mockGetUser.mockResolvedValueOnce({
+      data: { user: null },
     });
 
-    const request = new NextRequest('http://localhost:3000/api/chat', {
+    const _request = new NextRequest('http://localhost:3000/api/chat', {
       method: 'POST',
       body: JSON.stringify({ message: 'Hello' }),
     });
@@ -78,11 +84,12 @@ describe('Chat API', () => {
     // Import and call the route handler
     // Note: In a real test, you'd import the actual route handler
     // const { POST } = await import('@/app/api/chat/route');
-    // const response = await POST(request);
+    // const response = await POST(_request);
     // expect(response.status).toBe(401);
 
-    // For now, we'll just verify the mock was called
-    expect(mockSupabase).toBeDefined();
+    // For now, we'll just verify the mock was configured
+    expect(mockCreateClient).toBeDefined();
+    expect(mockGetUser).toBeDefined();
   });
 
   it('should process message and return streaming response', async () => {

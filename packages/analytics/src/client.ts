@@ -1,5 +1,5 @@
 import posthog from 'posthog-js';
-import type { AnalyticsUser, AnalyticsEvent, PageViewEvent } from './types';
+import type { AnalyticsUser, PageViewEvent } from './types';
 import { AnalyticsEvents } from './events';
 
 let isInitialized = false;

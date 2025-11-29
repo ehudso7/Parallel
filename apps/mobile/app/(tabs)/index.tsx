@@ -1,7 +1,7 @@
 import { View, Text, ScrollView, Pressable, StyleSheet, Dimensions } from 'react-native';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Image } from 'expo-image';
+// Image available from expo-image when needed
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/providers/AuthProvider';
@@ -10,7 +10,7 @@ const { width } = Dimensions.get('window');
 const CARD_WIDTH = width * 0.7;
 
 export default function HomeScreen() {
-  const { user, profile } = useAuth();
+  const { profile } = useAuth();
 
   const personas = [
     { id: '1', name: 'Luna', type: 'Companion', avatar: null, color: ['#8b5cf6', '#d946ef'] },
@@ -100,7 +100,7 @@ export default function HomeScreen() {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.horizontalScroll}
           >
-            {personas.map((persona, index) => (
+            {personas.map((persona) => (
               <Pressable
                 key={persona.id}
                 style={styles.personaCard}
@@ -146,7 +146,7 @@ export default function HomeScreen() {
             snapToInterval={CARD_WIDTH + 16}
             decelerationRate="fast"
           >
-            {worlds.map((world, index) => (
+            {worlds.map((world) => (
               <Pressable
                 key={world.id}
                 style={styles.worldCard}

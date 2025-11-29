@@ -14,7 +14,6 @@ import {
   Share2,
   Clock,
   Zap,
-  ChevronRight,
   Loader2,
   Volume2,
   Palette,
@@ -110,7 +109,7 @@ export default function CreatePage() {
       const data = await response.json();
       setGeneratedContent(data);
       toast({ title: 'Content generated!', variant: 'success' });
-    } catch (error) {
+    } catch (_error) {
       toast({ title: 'Generation failed', description: 'Please try again', variant: 'error' });
     } finally {
       setIsGenerating(false);

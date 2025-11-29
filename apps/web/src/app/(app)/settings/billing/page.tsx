@@ -10,10 +10,8 @@ import {
   CreditCard,
   Coins,
   Zap,
-  ArrowRight,
   Calendar,
   RefreshCw,
-  AlertCircle,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabase/client';
 import { cn } from '@parallel/ui';
@@ -153,7 +151,7 @@ export default function BillingPage() {
 
       if (error) throw new Error(error);
       if (url) window.location.href = url;
-    } catch (error) {
+    } catch (_error) {
       toast({ title: 'Failed to start checkout', variant: 'error' });
     } finally {
       setProcessingPlan(null);
@@ -177,7 +175,7 @@ export default function BillingPage() {
 
       if (error) throw new Error(error);
       if (url) window.location.href = url;
-    } catch (error) {
+    } catch (_error) {
       toast({ title: 'Failed to start checkout', variant: 'error' });
     } finally {
       setProcessingPlan(null);
@@ -194,7 +192,7 @@ export default function BillingPage() {
 
       if (error) throw new Error(error);
       if (url) window.location.href = url;
-    } catch (error) {
+    } catch (_error) {
       toast({ title: 'Failed to open portal', variant: 'error' });
     }
   };
@@ -209,7 +207,7 @@ export default function BillingPage() {
 
   const currentPlan = PLANS.find((p) => p.id === profile?.subscription_tier) || PLANS[0];
   const creditsUsedPercent = profile?.monthly_credits_used
-    ? Math.min(100, (profile.monthly_credits_used / (currentPlan.features.find((f) => f.includes('Credits'))?.match(/\d+/)?.[0] || 50)) * 100)
+    ? Math.min(100, (profile.monthly_credits_used / Number(currentPlan.features.find((f) => f.includes('Credits'))?.match(/\d+/)?.[0] || '50')) * 100)
     : 0;
 
   return (

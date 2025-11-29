@@ -3,7 +3,7 @@ import { createAdminClient } from '@/lib/supabase/server';
 import Stripe from 'stripe';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2024-11-20.acacia',
+  apiVersion: '2025-02-24.acacia',
 });
 
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
@@ -174,7 +174,7 @@ export async function POST(request: NextRequest) {
             provider: 'stripe',
             provider_subscription_id: subscription.id,
             provider_customer_id: subscription.customer as string,
-            price_amount: subscription.items.data[0]?.price.unit_amount! / 100,
+            price_amount: (subscription.items.data[0]?.price.unit_amount ?? 0) / 100,
             current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
             current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
           }, {

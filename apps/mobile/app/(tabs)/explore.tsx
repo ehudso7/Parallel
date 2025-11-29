@@ -109,7 +109,7 @@ export default function ExploreScreen() {
           </View>
 
           <View style={styles.worldsGrid}>
-            {featuredWorlds.map((world, index) => (
+            {featuredWorlds.map((world) => (
               <Pressable
                 key={world.id}
                 style={styles.worldCard}

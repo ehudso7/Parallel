@@ -22,7 +22,7 @@ export default async function AdminAnalyticsPage() {
   const [
     { count: totalUsers },
     { count: newUsers30d },
-    { count: newUsers7d },
+    { count: _newUsers7d },
     { count: totalMessages },
     { count: messages30d },
     { count: messages7d },
@@ -30,7 +30,7 @@ export default async function AdminAnalyticsPage() {
     { count: content30d },
     { count: activeSubscriptions },
     { data: topPersonaTypes },
-    { data: topWorlds },
+    { data: _topWorlds },
     { data: recentActivity },
   ] = await Promise.all([
     supabase.from('profiles').select('*', { count: 'exact', head: true }),
@@ -174,7 +174,7 @@ export default async function AdminAnalyticsPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {personaTypeData.map((item, index) => {
+              {personaTypeData.map((item) => {
                 const maxCount = personaTypeData[0]?.count || 1;
                 const percentage = (item.count / maxCount) * 100;
                 return (
