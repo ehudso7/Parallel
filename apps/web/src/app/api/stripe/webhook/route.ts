@@ -178,7 +178,7 @@ export async function POST(request: NextRequest) {
             current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
             current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
           }, {
-            onConflict: 'user_id',
+            onConflict: 'provider_subscription_id',
           });
 
         break;
