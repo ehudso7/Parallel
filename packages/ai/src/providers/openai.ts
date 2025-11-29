@@ -157,10 +157,22 @@ export async function generateImage(
       style: request.style === 'natural' ? 'natural' : 'vivid',
     });
 
+    const imageUrls = (response.data ?? [])
+      .map((img) => img.url)
+      .filter((u): u is string => !!u);
+
+    if (!imageUrls.length) {
+      console.warn('Image generation returned no URLs');
+      return {
+        id: Date.now().toString(),
+        status: 'failed',
+      };
+    }
+
     return {
       id: Date.now().toString(),
       status: 'completed',
-      imageUrls: response.data?.map((img) => img.url!) ?? [],
+      imageUrls,
     };
   } catch (error) {
     console.error('Image generation failed:', error);

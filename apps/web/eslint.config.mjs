@@ -20,6 +20,7 @@ const eslintConfig = [
       }],
       "@typescript-eslint/no-explicit-any": "warn",
       "@typescript-eslint/no-require-imports": "off",
+      // Disabled due to ESLint plugin bug: "a.getSource is not a function"
       "react-hooks/exhaustive-deps": "off",
     },
   },

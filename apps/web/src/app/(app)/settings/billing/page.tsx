@@ -34,7 +34,7 @@ const PLANS = [
   {
     id: 'basic',
     name: 'Basic',
-    price: 9.99,
+    price: 19.99,
     interval: 'month',
     stripePriceId: 'price_basic_monthly',
     features: [
@@ -50,13 +50,13 @@ const PLANS = [
   {
     id: 'pro',
     name: 'Pro',
-    price: 19.99,
+    price: 29.99,
     interval: 'month',
     stripePriceId: 'price_pro_monthly',
     features: [
       'Unlimited Companions',
       'All Worlds',
-      '2000 Credits/month',
+      '2,000 Credits/month',
       'Voice Messages',
       'HD Generations',
       'Priority Support',
@@ -67,12 +67,12 @@ const PLANS = [
   {
     id: 'unlimited',
     name: 'Unlimited',
-    price: 39.99,
+    price: 49.99,
     interval: 'month',
     stripePriceId: 'price_unlimited_monthly',
     features: [
       'Everything in Pro',
-      '5000 Credits/month',
+      '5,000 Credits/month',
       '4K Generations',
       'Custom Personas',
       'API Access (Limited)',
@@ -87,7 +87,7 @@ const PLANS = [
     stripePriceId: 'price_studio_monthly',
     features: [
       'Everything in Unlimited',
-      'Unlimited Credits',
+      '10,000 Credits/month',
       'Full API Access',
       'White-label Options',
       'Dedicated Support',

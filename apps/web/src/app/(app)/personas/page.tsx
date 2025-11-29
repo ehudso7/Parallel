@@ -240,7 +240,7 @@ export default async function PersonasPage() {
 
         {/* Favorites */}
         <TabsContent value="favorites">
-          {(userPersonas?.filter((up: any) => up.is_favorite).length ?? 0) > 0 ? (
+          {(userPersonas?.filter((up: any) => up.is_favorite)?.length ?? 0) > 0 ? (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {userPersonas
                 ?.filter((up: any) => up.is_favorite)

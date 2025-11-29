@@ -45,8 +45,8 @@ export default async function AdminWorldsPage() {
 
   // Summary stats
   const totalWorlds = worlds?.length || 0;
-  const activeWorlds = worlds?.filter((w) => w.is_active).length || 0;
-  const featuredWorlds = worlds?.filter((w) => w.is_featured).length || 0;
+  const activeWorlds = worlds?.filter((w) => w.is_active)?.length || 0;
+  const featuredWorlds = worlds?.filter((w) => w.is_featured)?.length || 0;
 
   return (
     <div>
