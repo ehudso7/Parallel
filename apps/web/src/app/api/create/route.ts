@@ -2,6 +2,40 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { CreatorEngineAgent } from '@parallel/ai';
 
+// Valid content types
+const VALID_CONTENT_TYPES = ['music', 'video', 'image', 'meme'] as const;
+type ContentType = (typeof VALID_CONTENT_TYPES)[number];
+
+// Input validation constants
+const MAX_PROMPT_LENGTH = 2000;
+const MIN_PROMPT_LENGTH = 3;
+
+// Type for generated content update data
+interface ContentUpdateData {
+  status: 'completed' | 'failed';
+  completed_at?: string;
+  result_url?: string;
+  result_urls?: string[];
+  thumbnail_url?: string;
+}
+
+// Validate UUID format
+function isValidUUID(str: string): boolean {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(str);
+}
+
+// Validate content type
+function isValidContentType(type: unknown): type is ContentType {
+  return typeof type === 'string' && VALID_CONTENT_TYPES.includes(type as ContentType);
+}
+
+// Sanitize prompt - remove potentially harmful patterns
+function sanitizePrompt(prompt: string): string {
+  // Remove excessive whitespace
+  return prompt.trim().replace(/\s+/g, ' ');
+}
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
@@ -11,10 +45,33 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { type, prompt, settings } = await request.json();
+    const body = await request.json();
+    const { type, prompt: rawPrompt, settings } = body;
 
-    if (!type || !prompt) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    // Validate type
+    if (!type || !isValidContentType(type)) {
+      return NextResponse.json({
+        error: `Invalid content type. Must be one of: ${VALID_CONTENT_TYPES.join(', ')}`
+      }, { status: 400 });
+    }
+
+    // Validate prompt
+    if (!rawPrompt || typeof rawPrompt !== 'string') {
+      return NextResponse.json({ error: 'Missing or invalid prompt' }, { status: 400 });
+    }
+
+    const prompt = sanitizePrompt(rawPrompt);
+
+    if (prompt.length < MIN_PROMPT_LENGTH) {
+      return NextResponse.json({
+        error: `Prompt too short. Minimum ${MIN_PROMPT_LENGTH} characters required.`
+      }, { status: 400 });
+    }
+
+    if (prompt.length > MAX_PROMPT_LENGTH) {
+      return NextResponse.json({
+        error: `Prompt too long. Maximum ${MAX_PROMPT_LENGTH} characters allowed.`
+      }, { status: 400 });
     }
 
     // Check user credits
@@ -189,6 +246,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Missing content ID' }, { status: 400 });
     }
 
+    if (!isValidUUID(contentId)) {
+      return NextResponse.json({ error: 'Invalid content ID format' }, { status: 400 });
+    }
+
     const { data: content, error } = await supabase
       .from('generated_content')
       .select('*')
@@ -207,7 +268,7 @@ export async function GET(request: NextRequest) {
 
       if (status.status === 'completed') {
         // Update content with result
-        const updateData: any = {
+        const updateData: ContentUpdateData = {
           status: 'completed',
           completed_at: new Date().toISOString(),
         };

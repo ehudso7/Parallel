@@ -18,13 +18,32 @@ function getStripe(): Stripe {
   return stripeClient;
 }
 
-// Price IDs (these would be created in Stripe dashboard)
-const PRICE_IDS: Record<string, string> = {
-  price_basic_monthly: process.env.STRIPE_PRICE_BASIC || 'price_xxx',
-  price_pro_monthly: process.env.STRIPE_PRICE_PRO || 'price_xxx',
-  price_unlimited_monthly: process.env.STRIPE_PRICE_UNLIMITED || 'price_xxx',
-  price_studio_monthly: process.env.STRIPE_PRICE_STUDIO || 'price_xxx',
-};
+// Validate Stripe Price IDs are configured
+function validatePriceIds(): Record<string, string> {
+  const priceIds: Record<string, string> = {
+    price_basic_monthly: process.env.STRIPE_PRICE_BASIC || '',
+    price_pro_monthly: process.env.STRIPE_PRICE_PRO || '',
+    price_unlimited_monthly: process.env.STRIPE_PRICE_UNLIMITED || '',
+    price_studio_monthly: process.env.STRIPE_PRICE_STUDIO || '',
+  };
+
+  // Warn in development if price IDs are not configured
+  const missing = Object.entries(priceIds)
+    .filter(([_, value]) => !value || value.startsWith('price_xxx'))
+    .map(([key]) => key);
+
+  if (missing.length > 0 && process.env.NODE_ENV === 'development') {
+    console.warn(
+      `[Stripe] Missing price IDs: ${missing.join(', ')}. ` +
+      'Subscription checkout will fail until these are configured in environment variables.'
+    );
+  }
+
+  return priceIds;
+}
+
+// Price IDs (these must be created in Stripe dashboard and set in env vars)
+const PRICE_IDS = validatePriceIds();
 
 const CREDIT_PRICES: Record<string, { price: number; credits: number }> = {
   credits_100: { price: 499, credits: 100 },
@@ -70,6 +89,17 @@ export async function POST(request: NextRequest) {
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
     if (mode === 'subscription' && priceId) {
+      // Validate and resolve price ID
+      const resolvedPriceId = PRICE_IDS[priceId] || priceId;
+
+      // Ensure price ID is valid (not empty or placeholder)
+      if (!resolvedPriceId || resolvedPriceId.startsWith('price_xxx')) {
+        console.error(`Invalid or unconfigured price ID: ${priceId}`);
+        return NextResponse.json({
+          error: 'Subscription pricing not configured. Please contact support.'
+        }, { status: 500 });
+      }
+
       // Create subscription checkout session
       const session = await stripe.checkout.sessions.create({
         customer: customerId,
@@ -77,7 +107,7 @@ export async function POST(request: NextRequest) {
         payment_method_types: ['card'],
         line_items: [
           {
-            price: PRICE_IDS[priceId] || priceId,
+            price: resolvedPriceId,
             quantity: 1,
           },
         ],

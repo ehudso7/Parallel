@@ -5,6 +5,15 @@ import type { PersonaConfig, WorldConfig, ChatMessage } from '@parallel/ai';
 
 export const runtime = 'edge';
 
+// Input validation constants
+const MAX_MESSAGE_LENGTH = 10000;
+
+// Validate UUID format
+function isValidUUID(str: string): boolean {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(str);
+}
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
@@ -14,10 +23,30 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { conversationId, message } = await request.json();
+    const body = await request.json();
+    const { conversationId, message } = body;
 
-    if (!conversationId || !message) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    // Input validation
+    if (!conversationId || typeof conversationId !== 'string') {
+      return NextResponse.json({ error: 'Missing or invalid conversationId' }, { status: 400 });
+    }
+
+    if (!isValidUUID(conversationId)) {
+      return NextResponse.json({ error: 'Invalid conversationId format' }, { status: 400 });
+    }
+
+    if (!message || typeof message !== 'string') {
+      return NextResponse.json({ error: 'Missing or invalid message' }, { status: 400 });
+    }
+
+    if (message.length > MAX_MESSAGE_LENGTH) {
+      return NextResponse.json({
+        error: `Message too long. Maximum ${MAX_MESSAGE_LENGTH} characters allowed.`
+      }, { status: 400 });
+    }
+
+    if (message.trim().length === 0) {
+      return NextResponse.json({ error: 'Message cannot be empty' }, { status: 400 });
     }
 
     // Fetch conversation with persona and world
