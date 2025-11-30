@@ -5,6 +5,14 @@ import type { Database } from '@parallel/database';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
+// Check if we're in a browser environment
+const isBrowser = typeof window !== 'undefined';
+
+// Check if Supabase is configured (useful for conditional rendering)
+export function isSupabaseConfigured(): boolean {
+  return Boolean(supabaseUrl && supabaseAnonKey);
+}
+
 function validateEnvVars(): { url: string; anonKey: string } {
   if (!supabaseUrl) {
     throw new Error(
@@ -30,19 +38,14 @@ export function createClient() {
 let client: ReturnType<typeof createClient> | null = null;
 
 export function getSupabase() {
-  if (typeof window === 'undefined') {
-    // Server-side: always create a new client
-    return createClient();
-  }
-
   // Client-side: use singleton
-  if (!client) {
-    client = createClient();
+  if (isBrowser) {
+    if (!client) {
+      client = createClient();
+    }
+    return client;
   }
-  return client;
-}
 
-// Check if Supabase is configured (useful for conditional rendering)
-export function isSupabaseConfigured(): boolean {
-  return Boolean(supabaseUrl && supabaseAnonKey);
+  // Server-side: always create new client
+  return createClient();
 }

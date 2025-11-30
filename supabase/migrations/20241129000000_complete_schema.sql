@@ -24,7 +24,7 @@ CREATE EXTENSION IF NOT EXISTS "vector";
 -- ===========================================
 CREATE TABLE IF NOT EXISTS credit_audit_log (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL,
+  user_id UUID,  -- Nullable to preserve audit records after user deletion
   function_name TEXT NOT NULL,
   amount INTEGER NOT NULL,
   old_balance INTEGER,
@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS credit_audit_log (
   metadata JSONB DEFAULT '{}',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+-- Note: FK to profiles added after profiles table creation via ALTER TABLE
 
 CREATE INDEX IF NOT EXISTS idx_credit_audit_log_user_id ON credit_audit_log(user_id);
 CREATE INDEX IF NOT EXISTS idx_credit_audit_log_created_at ON credit_audit_log(created_at DESC);
@@ -107,6 +108,12 @@ CREATE INDEX IF NOT EXISTS idx_profiles_subscription_tier ON profiles(subscripti
 CREATE INDEX IF NOT EXISTS idx_profiles_referral_code ON profiles(referral_code);
 CREATE INDEX IF NOT EXISTS idx_profiles_stripe_customer_id ON profiles(stripe_customer_id);
 CREATE INDEX IF NOT EXISTS idx_profiles_is_deleted ON profiles(is_deleted);
+
+-- Add FK to credit_audit_log now that profiles exists
+-- Using SET NULL to preserve audit records when user is deleted
+ALTER TABLE credit_audit_log
+  ADD CONSTRAINT fk_credit_audit_log_user_id
+  FOREIGN KEY (user_id) REFERENCES profiles(id) ON DELETE SET NULL;
 
 -- ===========================================
 -- USER PREFERENCES TABLE
@@ -187,7 +194,8 @@ CREATE INDEX IF NOT EXISTS idx_personas_user_id ON personas(user_id);
 CREATE INDEX IF NOT EXISTS idx_personas_is_public ON personas(is_public);
 CREATE INDEX IF NOT EXISTS idx_personas_persona_type ON personas(persona_type);
 CREATE INDEX IF NOT EXISTS idx_personas_tags ON personas USING GIN(tags);
-CREATE INDEX IF NOT EXISTS idx_personas_name ON personas(name);
+-- UNIQUE constraint on name for seed data idempotency (ON CONFLICT)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_personas_name ON personas(name) WHERE is_public = true;
 
 -- ===========================================
 -- USER PERSONAS TABLE (Junction)
@@ -264,7 +272,8 @@ CREATE INDEX IF NOT EXISTS idx_worlds_user_id ON worlds(user_id);
 CREATE INDEX IF NOT EXISTS idx_worlds_is_public ON worlds(is_public);
 CREATE INDEX IF NOT EXISTS idx_worlds_theme ON worlds(theme);
 CREATE INDEX IF NOT EXISTS idx_worlds_is_featured ON worlds(is_featured);
-CREATE INDEX IF NOT EXISTS idx_worlds_name ON worlds(name);
+-- UNIQUE constraint on name for seed data idempotency (ON CONFLICT)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_worlds_name ON worlds(name) WHERE is_public = true;
 
 -- ===========================================
 -- USER WORLDS TABLE (Junction)
@@ -854,7 +863,11 @@ BEGIN
 
   RETURN new_balance;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_catalog;
+
+-- Restrict execution to service role only
+REVOKE EXECUTE ON FUNCTION increment_credits FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION increment_credits TO service_role;
 
 -- Atomic credit deduction function with validation and audit logging
 CREATE OR REPLACE FUNCTION deduct_credits(
@@ -911,7 +924,11 @@ BEGIN
 
   RETURN QUERY SELECT true, result_balance, NULL::TEXT;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_catalog;
+
+-- Restrict execution to service role only
+REVOKE EXECUTE ON FUNCTION deduct_credits FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION deduct_credits TO service_role;
 
 -- Reset monthly credits function with audit logging
 CREATE OR REPLACE FUNCTION reset_monthly_credits(
@@ -954,7 +971,11 @@ BEGIN
 
   RETURN FOUND;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_catalog;
+
+-- Restrict execution to service role only
+REVOKE EXECUTE ON FUNCTION reset_monthly_credits FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION reset_monthly_credits TO service_role;
 
 -- Increment message count function
 CREATE OR REPLACE FUNCTION increment_message_count(p_user_id UUID)
@@ -971,7 +992,11 @@ BEGIN
     updated_at = NOW()
   WHERE id = p_user_id;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_catalog;
+
+-- Restrict execution to service role only
+REVOKE EXECUTE ON FUNCTION increment_message_count FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION increment_message_count TO service_role;
 
 -- Search memories with vector similarity
 -- Uses HNSW index for fast approximate nearest neighbor search
@@ -1044,7 +1069,7 @@ EXCEPTION
     RAISE WARNING 'Failed to create profile for user %: %', NEW.id, SQLERRM;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_catalog;
 
 -- Create trigger for new user
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
@@ -1072,7 +1097,11 @@ BEGIN
 
   RETURN FOUND;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_catalog;
+
+-- Restrict execution to service role only
+REVOKE EXECUTE ON FUNCTION soft_delete_profile FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION soft_delete_profile TO service_role;
 
 -- ===========================================
 -- ROW LEVEL SECURITY POLICIES
@@ -1232,7 +1261,7 @@ VALUES
   ('Rex', 'hype', true, 'Your biggest fan', 'Rex is your ultimate hype person who celebrates your wins and pumps you up.',
    '{"traits": ["enthusiastic", "supportive", "energetic"], "speaking_style": "excited", "emotional_range": "very_high", "humor_level": "high", "formality": "very_casual", "empathy_level": "moderate", "assertiveness": "high"}',
    'YOOOO! What''s good?! I''ve been waiting all day to see what amazing things you''ve been up to!')
-ON CONFLICT (name) DO NOTHING;
+ON CONFLICT (name) WHERE is_public = true DO NOTHING;
 
 -- ===========================================
 -- SEED DATA - Default Worlds
@@ -1259,7 +1288,7 @@ VALUES
   ('Velvet Lounge', 'luxury', true, 'Elegance redefined', 'An upscale lounge where sophistication meets comfort.',
    'Plush velvet seating, soft jazz playing in the background. Crystal chandeliers cast warm light across marble floors as champagne flows freely.',
    'Sophisticated, intimate, luxurious')
-ON CONFLICT (name) DO NOTHING;
+ON CONFLICT (name) WHERE is_public = true DO NOTHING;
 
 -- ===========================================
 -- TABLE COMMENTS
