@@ -1,6 +1,16 @@
 -- ===========================================
 -- PARALLEL - Complete Database Schema
 -- Production-ready database setup
+-- Version: 1.0.0
+-- ===========================================
+--
+-- CASCADE DELETE POLICY:
+-- User deletion cascades to all user-owned data for GDPR compliance.
+-- For data retention requirements, use the soft-delete columns:
+-- - profiles.is_deleted, profiles.deleted_at
+-- Application should filter on is_deleted = false for normal queries.
+-- Hard delete should only occur after retention period (default: 30 days).
+--
 -- ===========================================
 
 -- Enable required extensions
@@ -9,8 +19,30 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE EXTENSION IF NOT EXISTS "vector";
 
 -- ===========================================
+-- CREDIT AUDIT LOG TABLE (Created first for FK references)
+-- Tracks all credit modifications for compliance
+-- ===========================================
+CREATE TABLE IF NOT EXISTS credit_audit_log (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL,
+  function_name TEXT NOT NULL,
+  amount INTEGER NOT NULL,
+  old_balance INTEGER,
+  new_balance INTEGER,
+  called_by TEXT,
+  ip_address INET,
+  user_agent TEXT,
+  metadata JSONB DEFAULT '{}',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_credit_audit_log_user_id ON credit_audit_log(user_id);
+CREATE INDEX IF NOT EXISTS idx_credit_audit_log_created_at ON credit_audit_log(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_credit_audit_log_function_name ON credit_audit_log(function_name);
+
+-- ===========================================
 -- PROFILES TABLE
--- Core user profile data
+-- Core user profile data with soft-delete support
 -- ===========================================
 CREATE TABLE IF NOT EXISTS profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -33,9 +65,9 @@ CREATE TABLE IF NOT EXISTS profiles (
   revenuecat_id TEXT,
 
   -- Credits
-  credits_balance INTEGER DEFAULT 50,
-  monthly_credits_used INTEGER DEFAULT 0,
-  lifetime_credits_used INTEGER DEFAULT 0,
+  credits_balance INTEGER DEFAULT 50 CHECK (credits_balance >= 0),
+  monthly_credits_used INTEGER DEFAULT 0 CHECK (monthly_credits_used >= 0),
+  lifetime_credits_used INTEGER DEFAULT 0 CHECK (lifetime_credits_used >= 0),
 
   -- Engagement
   current_streak INTEGER DEFAULT 0,
@@ -59,17 +91,22 @@ CREATE TABLE IF NOT EXISTS profiles (
   onboarding_completed BOOLEAN DEFAULT false,
   onboarding_step INTEGER DEFAULT 0,
 
+  -- Soft delete support (for GDPR data retention)
+  is_deleted BOOLEAN DEFAULT false,
+  deleted_at TIMESTAMPTZ,
+
   metadata JSONB DEFAULT '{}',
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Indexes for profiles
-CREATE INDEX IF NOT EXISTS idx_profiles_username ON profiles(username);
-CREATE INDEX IF NOT EXISTS idx_profiles_email ON profiles(email);
-CREATE INDEX IF NOT EXISTS idx_profiles_subscription_tier ON profiles(subscription_tier);
+CREATE INDEX IF NOT EXISTS idx_profiles_username ON profiles(username) WHERE is_deleted = false;
+CREATE INDEX IF NOT EXISTS idx_profiles_email ON profiles(email) WHERE is_deleted = false;
+CREATE INDEX IF NOT EXISTS idx_profiles_subscription_tier ON profiles(subscription_tier) WHERE is_deleted = false;
 CREATE INDEX IF NOT EXISTS idx_profiles_referral_code ON profiles(referral_code);
 CREATE INDEX IF NOT EXISTS idx_profiles_stripe_customer_id ON profiles(stripe_customer_id);
+CREATE INDEX IF NOT EXISTS idx_profiles_is_deleted ON profiles(is_deleted);
 
 -- ===========================================
 -- USER PREFERENCES TABLE
@@ -89,6 +126,8 @@ CREATE TABLE IF NOT EXISTS user_preferences (
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(user_id)
 );
+
+CREATE INDEX IF NOT EXISTS idx_user_preferences_user_id ON user_preferences(user_id);
 
 -- ===========================================
 -- PERSONAS TABLE
@@ -148,6 +187,7 @@ CREATE INDEX IF NOT EXISTS idx_personas_user_id ON personas(user_id);
 CREATE INDEX IF NOT EXISTS idx_personas_is_public ON personas(is_public);
 CREATE INDEX IF NOT EXISTS idx_personas_persona_type ON personas(persona_type);
 CREATE INDEX IF NOT EXISTS idx_personas_tags ON personas USING GIN(tags);
+CREATE INDEX IF NOT EXISTS idx_personas_name ON personas(name);
 
 -- ===========================================
 -- USER PERSONAS TABLE (Junction)
@@ -172,6 +212,7 @@ CREATE TABLE IF NOT EXISTS user_personas (
 
 CREATE INDEX IF NOT EXISTS idx_user_personas_user_id ON user_personas(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_personas_persona_id ON user_personas(persona_id);
+CREATE INDEX IF NOT EXISTS idx_user_personas_is_favorite ON user_personas(is_favorite) WHERE is_favorite = true;
 
 -- ===========================================
 -- WORLDS TABLE
@@ -223,6 +264,7 @@ CREATE INDEX IF NOT EXISTS idx_worlds_user_id ON worlds(user_id);
 CREATE INDEX IF NOT EXISTS idx_worlds_is_public ON worlds(is_public);
 CREATE INDEX IF NOT EXISTS idx_worlds_theme ON worlds(theme);
 CREATE INDEX IF NOT EXISTS idx_worlds_is_featured ON worlds(is_featured);
+CREATE INDEX IF NOT EXISTS idx_worlds_name ON worlds(name);
 
 -- ===========================================
 -- USER WORLDS TABLE (Junction)
@@ -273,6 +315,7 @@ CREATE TABLE IF NOT EXISTS conversations (
 
 CREATE INDEX IF NOT EXISTS idx_conversations_user_id ON conversations(user_id);
 CREATE INDEX IF NOT EXISTS idx_conversations_persona_id ON conversations(persona_id);
+CREATE INDEX IF NOT EXISTS idx_conversations_world_id ON conversations(world_id);
 CREATE INDEX IF NOT EXISTS idx_conversations_is_active ON conversations(is_active);
 CREATE INDEX IF NOT EXISTS idx_conversations_last_message_at ON conversations(last_message_at DESC);
 
@@ -307,6 +350,7 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_messages_role ON messages(role);
+CREATE INDEX IF NOT EXISTS idx_messages_generated_content_id ON messages(generated_content_id) WHERE generated_content_id IS NOT NULL;
 
 -- ===========================================
 -- MEMORIES TABLE
@@ -340,6 +384,13 @@ CREATE INDEX IF NOT EXISTS idx_memories_user_id ON memories(user_id);
 CREATE INDEX IF NOT EXISTS idx_memories_persona_id ON memories(persona_id);
 CREATE INDEX IF NOT EXISTS idx_memories_memory_type ON memories(memory_type);
 CREATE INDEX IF NOT EXISTS idx_memories_importance ON memories(importance_score DESC);
+CREATE INDEX IF NOT EXISTS idx_memories_user_persona ON memories(user_id, persona_id);
+
+-- HNSW index for fast vector similarity search (requires pgvector 0.5.0+)
+-- Using cosine distance for normalized embeddings
+CREATE INDEX IF NOT EXISTS idx_memories_embedding ON memories
+  USING hnsw (embedding vector_cosine_ops)
+  WITH (m = 16, ef_construction = 64);
 
 -- ===========================================
 -- GENERATED CONTENT TABLE
@@ -390,6 +441,7 @@ CREATE INDEX IF NOT EXISTS idx_generated_content_content_type ON generated_conte
 CREATE INDEX IF NOT EXISTS idx_generated_content_status ON generated_content(status);
 CREATE INDEX IF NOT EXISTS idx_generated_content_is_public ON generated_content(is_public);
 CREATE INDEX IF NOT EXISTS idx_generated_content_created_at ON generated_content(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_generated_content_provider_job_id ON generated_content(provider_job_id) WHERE provider_job_id IS NOT NULL;
 
 -- ===========================================
 -- SUBSCRIPTIONS TABLE
@@ -425,6 +477,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
 CREATE INDEX IF NOT EXISTS idx_subscriptions_user_id ON subscriptions(user_id);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_provider_subscription_id ON subscriptions(provider_subscription_id);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_status ON subscriptions(status);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_provider_customer_id ON subscriptions(provider_customer_id);
 
 -- ===========================================
 -- PURCHASES TABLE
@@ -456,6 +509,7 @@ CREATE TABLE IF NOT EXISTS purchases (
 CREATE INDEX IF NOT EXISTS idx_purchases_user_id ON purchases(user_id);
 CREATE INDEX IF NOT EXISTS idx_purchases_purchase_type ON purchases(purchase_type);
 CREATE INDEX IF NOT EXISTS idx_purchases_created_at ON purchases(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_purchases_provider_transaction_id ON purchases(provider_transaction_id);
 
 -- ===========================================
 -- CREDIT TRANSACTIONS TABLE
@@ -478,6 +532,7 @@ CREATE TABLE IF NOT EXISTS credit_transactions (
 
 CREATE INDEX IF NOT EXISTS idx_credit_transactions_user_id ON credit_transactions(user_id);
 CREATE INDEX IF NOT EXISTS idx_credit_transactions_created_at ON credit_transactions(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_credit_transactions_source ON credit_transactions(source);
 
 -- ===========================================
 -- REFERRALS TABLE
@@ -500,6 +555,7 @@ CREATE TABLE IF NOT EXISTS referrals (
 
 CREATE INDEX IF NOT EXISTS idx_referrals_referrer_id ON referrals(referrer_id);
 CREATE INDEX IF NOT EXISTS idx_referrals_referred_id ON referrals(referred_id);
+CREATE INDEX IF NOT EXISTS idx_referrals_status ON referrals(status);
 
 -- ===========================================
 -- DAILY REWARDS TABLE
@@ -522,6 +578,7 @@ CREATE TABLE IF NOT EXISTS daily_rewards (
 
 CREATE INDEX IF NOT EXISTS idx_daily_rewards_user_id ON daily_rewards(user_id);
 CREATE INDEX IF NOT EXISTS idx_daily_rewards_claimed ON daily_rewards(claimed);
+CREATE INDEX IF NOT EXISTS idx_daily_rewards_expires_at ON daily_rewards(expires_at);
 
 -- ===========================================
 -- BOOSTS TABLE
@@ -543,9 +600,12 @@ CREATE TABLE IF NOT EXISTS boosts (
 
 CREATE INDEX IF NOT EXISTS idx_boosts_user_id ON boosts(user_id);
 CREATE INDEX IF NOT EXISTS idx_boosts_expires_at ON boosts(expires_at);
+CREATE INDEX IF NOT EXISTS idx_boosts_active ON boosts(user_id, expires_at) WHERE expires_at > NOW();
 
 -- ===========================================
 -- ANALYTICS EVENTS TABLE
+-- Note: NULL user_id allowed for anonymous/unauthenticated events
+-- Ensure no PII is logged for anonymous events (GDPR compliance)
 -- ===========================================
 CREATE TABLE IF NOT EXISTS analytics_events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -575,6 +635,7 @@ CREATE TABLE IF NOT EXISTS analytics_events (
 CREATE INDEX IF NOT EXISTS idx_analytics_events_user_id ON analytics_events(user_id);
 CREATE INDEX IF NOT EXISTS idx_analytics_events_event_name ON analytics_events(event_name);
 CREATE INDEX IF NOT EXISTS idx_analytics_events_created_at ON analytics_events(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_analytics_events_session_id ON analytics_events(session_id);
 
 -- ===========================================
 -- ADMIN USERS TABLE
@@ -583,13 +644,16 @@ CREATE TABLE IF NOT EXISTS admin_users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
 
-  role TEXT NOT NULL DEFAULT 'moderator',
+  role TEXT NOT NULL DEFAULT 'moderator' CHECK (role IN ('moderator', 'admin', 'super_admin')),
   permissions JSONB DEFAULT '{}',
 
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(user_id)
 );
+
+CREATE INDEX IF NOT EXISTS idx_admin_users_user_id ON admin_users(user_id);
+CREATE INDEX IF NOT EXISTS idx_admin_users_role ON admin_users(role);
 
 -- ===========================================
 -- CONTENT REPORTS TABLE
@@ -603,7 +667,7 @@ CREATE TABLE IF NOT EXISTS content_reports (
   reason TEXT NOT NULL,
   description TEXT,
 
-  status TEXT DEFAULT 'pending',
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'reviewing', 'resolved', 'dismissed')),
   reviewed_by UUID REFERENCES profiles(id),
   reviewed_at TIMESTAMPTZ,
   resolution TEXT,
@@ -613,16 +677,19 @@ CREATE TABLE IF NOT EXISTS content_reports (
 
 CREATE INDEX IF NOT EXISTS idx_content_reports_status ON content_reports(status);
 CREATE INDEX IF NOT EXISTS idx_content_reports_content_type ON content_reports(content_type);
+CREATE INDEX IF NOT EXISTS idx_content_reports_reporter_id ON content_reports(reporter_id);
 
 -- ===========================================
 -- PUSH TOKENS TABLE
+-- Note: Token is unique globally - a device can only belong to one user
+-- On conflict, application should update the user_id to transfer the token
 -- ===========================================
 CREATE TABLE IF NOT EXISTS push_tokens (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
 
   token TEXT NOT NULL,
-  platform TEXT NOT NULL,
+  platform TEXT NOT NULL CHECK (platform IN ('ios', 'android', 'web')),
   device_id TEXT,
   is_active BOOLEAN DEFAULT true,
 
@@ -633,6 +700,7 @@ CREATE TABLE IF NOT EXISTS push_tokens (
 
 CREATE INDEX IF NOT EXISTS idx_push_tokens_user_id ON push_tokens(user_id);
 CREATE INDEX IF NOT EXISTS idx_push_tokens_is_active ON push_tokens(is_active);
+CREATE INDEX IF NOT EXISTS idx_push_tokens_platform ON push_tokens(platform);
 
 -- ===========================================
 -- SCHEDULED NOTIFICATIONS TABLE
@@ -656,6 +724,7 @@ CREATE TABLE IF NOT EXISTS scheduled_notifications (
 CREATE INDEX IF NOT EXISTS idx_scheduled_notifications_user_id ON scheduled_notifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_scheduled_notifications_scheduled_for ON scheduled_notifications(scheduled_for);
 CREATE INDEX IF NOT EXISTS idx_scheduled_notifications_sent ON scheduled_notifications(sent);
+CREATE INDEX IF NOT EXISTS idx_scheduled_notifications_pending ON scheduled_notifications(scheduled_for) WHERE sent = false;
 
 -- ===========================================
 -- WEBHOOK EVENTS TABLE
@@ -665,11 +734,15 @@ CREATE TABLE IF NOT EXISTS webhook_events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   event_id TEXT NOT NULL UNIQUE,
   event_type TEXT NOT NULL,
+  provider TEXT DEFAULT 'stripe',
+  payload JSONB,
   processed_at TIMESTAMPTZ NOT NULL,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_webhook_events_event_id ON webhook_events(event_id);
+CREATE INDEX IF NOT EXISTS idx_webhook_events_event_type ON webhook_events(event_type);
+CREATE INDEX IF NOT EXISTS idx_webhook_events_provider ON webhook_events(provider);
 
 -- ===========================================
 -- FUNCTIONS
@@ -684,36 +757,90 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Apply updated_at trigger to all tables with updated_at column
-DO $$
-DECLARE
-  t TEXT;
-BEGIN
-  FOR t IN
-    SELECT table_name
-    FROM information_schema.columns
-    WHERE column_name = 'updated_at'
-    AND table_schema = 'public'
-  LOOP
-    EXECUTE format('
-      DROP TRIGGER IF EXISTS update_%I_updated_at ON %I;
-      CREATE TRIGGER update_%I_updated_at
-        BEFORE UPDATE ON %I
-        FOR EACH ROW
-        EXECUTE FUNCTION update_updated_at_column();
-    ', t, t, t, t);
-  END LOOP;
-END $$;
+-- Explicit trigger creation for each table (for better auditability)
+-- profiles
+DROP TRIGGER IF EXISTS update_profiles_updated_at ON profiles;
+CREATE TRIGGER update_profiles_updated_at BEFORE UPDATE ON profiles FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Atomic credit increment function
+-- user_preferences
+DROP TRIGGER IF EXISTS update_user_preferences_updated_at ON user_preferences;
+CREATE TRIGGER update_user_preferences_updated_at BEFORE UPDATE ON user_preferences FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- personas
+DROP TRIGGER IF EXISTS update_personas_updated_at ON personas;
+CREATE TRIGGER update_personas_updated_at BEFORE UPDATE ON personas FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- user_personas
+DROP TRIGGER IF EXISTS update_user_personas_updated_at ON user_personas;
+CREATE TRIGGER update_user_personas_updated_at BEFORE UPDATE ON user_personas FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- worlds
+DROP TRIGGER IF EXISTS update_worlds_updated_at ON worlds;
+CREATE TRIGGER update_worlds_updated_at BEFORE UPDATE ON worlds FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- user_worlds
+DROP TRIGGER IF EXISTS update_user_worlds_updated_at ON user_worlds;
+CREATE TRIGGER update_user_worlds_updated_at BEFORE UPDATE ON user_worlds FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- conversations
+DROP TRIGGER IF EXISTS update_conversations_updated_at ON conversations;
+CREATE TRIGGER update_conversations_updated_at BEFORE UPDATE ON conversations FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- memories
+DROP TRIGGER IF EXISTS update_memories_updated_at ON memories;
+CREATE TRIGGER update_memories_updated_at BEFORE UPDATE ON memories FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- generated_content
+DROP TRIGGER IF EXISTS update_generated_content_updated_at ON generated_content;
+CREATE TRIGGER update_generated_content_updated_at BEFORE UPDATE ON generated_content FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- subscriptions
+DROP TRIGGER IF EXISTS update_subscriptions_updated_at ON subscriptions;
+CREATE TRIGGER update_subscriptions_updated_at BEFORE UPDATE ON subscriptions FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- admin_users
+DROP TRIGGER IF EXISTS update_admin_users_updated_at ON admin_users;
+CREATE TRIGGER update_admin_users_updated_at BEFORE UPDATE ON admin_users FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- push_tokens
+DROP TRIGGER IF EXISTS update_push_tokens_updated_at ON push_tokens;
+CREATE TRIGGER update_push_tokens_updated_at BEFORE UPDATE ON push_tokens FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- ===========================================
+-- CREDIT MANAGEMENT FUNCTIONS
+-- All functions validate input and log to audit table
+-- ===========================================
+
+-- Atomic credit increment function with audit logging
 CREATE OR REPLACE FUNCTION increment_credits(
   p_user_id UUID,
   p_amount INTEGER
 )
 RETURNS INTEGER AS $$
 DECLARE
+  old_balance INTEGER;
   new_balance INTEGER;
 BEGIN
+  -- Validate input
+  IF p_amount IS NULL OR p_amount <= 0 THEN
+    RAISE EXCEPTION 'Amount must be a positive integer, got: %', p_amount;
+  END IF;
+
+  IF p_user_id IS NULL THEN
+    RAISE EXCEPTION 'User ID cannot be null';
+  END IF;
+
+  -- Get current balance with lock
+  SELECT credits_balance INTO old_balance
+  FROM profiles
+  WHERE id = p_user_id
+  FOR UPDATE;
+
+  IF old_balance IS NULL THEN
+    RAISE EXCEPTION 'User not found: %', p_user_id;
+  END IF;
+
+  -- Update balance
   UPDATE profiles
   SET
     credits_balance = credits_balance + p_amount,
@@ -721,11 +848,15 @@ BEGIN
   WHERE id = p_user_id
   RETURNING credits_balance INTO new_balance;
 
+  -- Log to audit table
+  INSERT INTO credit_audit_log (user_id, function_name, amount, old_balance, new_balance, called_by)
+  VALUES (p_user_id, 'increment_credits', p_amount, old_balance, new_balance, current_user);
+
   RETURN new_balance;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Atomic credit deduction function
+-- Atomic credit deduction function with validation and audit logging
 CREATE OR REPLACE FUNCTION deduct_credits(
   p_user_id UUID,
   p_amount INTEGER
@@ -735,21 +866,36 @@ DECLARE
   current_balance INTEGER;
   result_balance INTEGER;
 BEGIN
+  -- Validate input
+  IF p_amount IS NULL OR p_amount <= 0 THEN
+    RETURN QUERY SELECT false, 0, format('Amount must be a positive integer, got: %s', p_amount)::TEXT;
+    RETURN;
+  END IF;
+
+  IF p_user_id IS NULL THEN
+    RETURN QUERY SELECT false, 0, 'User ID cannot be null'::TEXT;
+    RETURN;
+  END IF;
+
+  -- Get current balance with row lock
   SELECT credits_balance INTO current_balance
   FROM profiles
   WHERE id = p_user_id
   FOR UPDATE;
 
+  -- Check if user exists
   IF current_balance IS NULL THEN
     RETURN QUERY SELECT false, 0, 'User not found'::TEXT;
     RETURN;
   END IF;
 
+  -- Check if sufficient balance
   IF current_balance < p_amount THEN
-    RETURN QUERY SELECT false, current_balance, 'Insufficient credits'::TEXT;
+    RETURN QUERY SELECT false, current_balance, format('Insufficient credits: has %s, needs %s', current_balance, p_amount)::TEXT;
     RETURN;
   END IF;
 
+  -- Deduct credits
   UPDATE profiles
   SET
     credits_balance = credits_balance - p_amount,
@@ -759,23 +905,52 @@ BEGIN
   WHERE id = p_user_id
   RETURNING credits_balance INTO result_balance;
 
+  -- Log to audit table
+  INSERT INTO credit_audit_log (user_id, function_name, amount, old_balance, new_balance, called_by)
+  VALUES (p_user_id, 'deduct_credits', -p_amount, current_balance, result_balance, current_user);
+
   RETURN QUERY SELECT true, result_balance, NULL::TEXT;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Reset monthly credits function
+-- Reset monthly credits function with audit logging
 CREATE OR REPLACE FUNCTION reset_monthly_credits(
   p_user_id UUID,
   p_monthly_credits INTEGER
 )
 RETURNS BOOLEAN AS $$
+DECLARE
+  old_balance INTEGER;
 BEGIN
+  -- Validate input
+  IF p_monthly_credits IS NULL OR p_monthly_credits < 0 THEN
+    RAISE EXCEPTION 'Monthly credits must be a non-negative integer, got: %', p_monthly_credits;
+  END IF;
+
+  IF p_user_id IS NULL THEN
+    RAISE EXCEPTION 'User ID cannot be null';
+  END IF;
+
+  -- Get current balance
+  SELECT credits_balance INTO old_balance
+  FROM profiles
+  WHERE id = p_user_id;
+
+  IF old_balance IS NULL THEN
+    RETURN false;
+  END IF;
+
+  -- Reset credits
   UPDATE profiles
   SET
     credits_balance = p_monthly_credits,
     monthly_credits_used = 0,
     updated_at = NOW()
   WHERE id = p_user_id;
+
+  -- Log to audit table
+  INSERT INTO credit_audit_log (user_id, function_name, amount, old_balance, new_balance, called_by)
+  VALUES (p_user_id, 'reset_monthly_credits', p_monthly_credits - old_balance, old_balance, p_monthly_credits, current_user);
 
   RETURN FOUND;
 END;
@@ -785,6 +960,10 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 CREATE OR REPLACE FUNCTION increment_message_count(p_user_id UUID)
 RETURNS VOID AS $$
 BEGIN
+  IF p_user_id IS NULL THEN
+    RAISE EXCEPTION 'User ID cannot be null';
+  END IF;
+
   UPDATE profiles
   SET
     total_messages_sent = total_messages_sent + 1,
@@ -795,6 +974,7 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Search memories with vector similarity
+-- Uses HNSW index for fast approximate nearest neighbor search
 CREATE OR REPLACE FUNCTION search_memories(
   query_embedding vector(1536),
   p_user_id UUID,
@@ -811,6 +991,23 @@ RETURNS TABLE (
   similarity FLOAT
 ) AS $$
 BEGIN
+  -- Validate inputs
+  IF query_embedding IS NULL THEN
+    RAISE EXCEPTION 'Query embedding cannot be null';
+  END IF;
+
+  IF p_user_id IS NULL THEN
+    RAISE EXCEPTION 'User ID cannot be null';
+  END IF;
+
+  IF match_threshold < 0 OR match_threshold > 1 THEN
+    RAISE EXCEPTION 'Match threshold must be between 0 and 1, got: %', match_threshold;
+  END IF;
+
+  IF match_count <= 0 THEN
+    RAISE EXCEPTION 'Match count must be positive, got: %', match_count;
+  END IF;
+
   RETURN QUERY
   SELECT
     m.id,
@@ -827,7 +1024,7 @@ BEGIN
   ORDER BY m.embedding <=> query_embedding
   LIMIT match_count;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql STABLE;
 
 -- Handle new user creation (trigger on auth.users)
 CREATE OR REPLACE FUNCTION handle_new_user()
@@ -838,8 +1035,14 @@ BEGIN
     NEW.id,
     NEW.email,
     COALESCE(NEW.raw_user_meta_data->>'username', split_part(NEW.email, '@', 1))
-  );
+  )
+  ON CONFLICT (id) DO NOTHING;
   RETURN NEW;
+EXCEPTION
+  WHEN OTHERS THEN
+    -- Log error but don't fail auth
+    RAISE WARNING 'Failed to create profile for user %: %', NEW.id, SQLERRM;
+    RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
@@ -848,6 +1051,28 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION handle_new_user();
+
+-- Soft delete function for profiles
+CREATE OR REPLACE FUNCTION soft_delete_profile(p_user_id UUID)
+RETURNS BOOLEAN AS $$
+BEGIN
+  UPDATE profiles
+  SET
+    is_deleted = true,
+    deleted_at = NOW(),
+    -- Anonymize PII
+    email = 'deleted_' || id::TEXT || '@deleted.local',
+    username = 'deleted_' || encode(gen_random_bytes(8), 'hex'),
+    display_name = 'Deleted User',
+    avatar_url = NULL,
+    bio = NULL,
+    date_of_birth = NULL,
+    updated_at = NOW()
+  WHERE id = p_user_id AND is_deleted = false;
+
+  RETURN FOUND;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- ===========================================
 -- ROW LEVEL SECURITY POLICIES
@@ -867,6 +1092,7 @@ ALTER TABLE generated_content ENABLE ROW LEVEL SECURITY;
 ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE purchases ENABLE ROW LEVEL SECURITY;
 ALTER TABLE credit_transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE credit_audit_log ENABLE ROW LEVEL SECURITY;
 ALTER TABLE referrals ENABLE ROW LEVEL SECURITY;
 ALTER TABLE daily_rewards ENABLE ROW LEVEL SECURITY;
 ALTER TABLE boosts ENABLE ROW LEVEL SECURITY;
@@ -877,13 +1103,14 @@ ALTER TABLE push_tokens ENABLE ROW LEVEL SECURITY;
 ALTER TABLE scheduled_notifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE webhook_events ENABLE ROW LEVEL SECURITY;
 
--- Profiles policies
-CREATE POLICY "Users can view own profile" ON profiles FOR SELECT USING (auth.uid() = id);
-CREATE POLICY "Users can update own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
+-- Profiles policies (exclude soft-deleted)
+CREATE POLICY "Users can view own profile" ON profiles FOR SELECT USING (auth.uid() = id AND is_deleted = false);
+CREATE POLICY "Users can update own profile" ON profiles FOR UPDATE USING (auth.uid() = id AND is_deleted = false);
 CREATE POLICY "Service role full access to profiles" ON profiles FOR ALL USING (auth.role() = 'service_role');
 
 -- User preferences policies
 CREATE POLICY "Users can manage own preferences" ON user_preferences FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "Service role full access to user_preferences" ON user_preferences FOR ALL USING (auth.role() = 'service_role');
 
 -- Personas policies
 CREATE POLICY "Anyone can view public personas" ON personas FOR SELECT USING (is_public = true OR user_id = auth.uid());
@@ -892,6 +1119,7 @@ CREATE POLICY "Service role full access to personas" ON personas FOR ALL USING (
 
 -- User personas policies
 CREATE POLICY "Users can manage own user_personas" ON user_personas FOR ALL USING (user_id = auth.uid());
+CREATE POLICY "Service role full access to user_personas" ON user_personas FOR ALL USING (auth.role() = 'service_role');
 
 -- Worlds policies
 CREATE POLICY "Anyone can view public worlds" ON worlds FOR SELECT USING (is_public = true OR user_id = auth.uid());
@@ -900,9 +1128,11 @@ CREATE POLICY "Service role full access to worlds" ON worlds FOR ALL USING (auth
 
 -- User worlds policies
 CREATE POLICY "Users can manage own user_worlds" ON user_worlds FOR ALL USING (user_id = auth.uid());
+CREATE POLICY "Service role full access to user_worlds" ON user_worlds FOR ALL USING (auth.role() = 'service_role');
 
 -- Conversations policies
 CREATE POLICY "Users can manage own conversations" ON conversations FOR ALL USING (user_id = auth.uid());
+CREATE POLICY "Service role full access to conversations" ON conversations FOR ALL USING (auth.role() = 'service_role');
 
 -- Messages policies
 CREATE POLICY "Users can view messages in own conversations" ON messages FOR SELECT
@@ -932,18 +1162,23 @@ CREATE POLICY "Service role manages purchases" ON purchases FOR ALL USING (auth.
 CREATE POLICY "Users can view own transactions" ON credit_transactions FOR SELECT USING (user_id = auth.uid());
 CREATE POLICY "Service role manages transactions" ON credit_transactions FOR ALL USING (auth.role() = 'service_role');
 
+-- Credit audit log policies (read-only for users, full for service role)
+CREATE POLICY "Users can view own credit audit" ON credit_audit_log FOR SELECT USING (user_id = auth.uid());
+CREATE POLICY "Service role manages credit audit" ON credit_audit_log FOR ALL USING (auth.role() = 'service_role');
+
 -- Referrals policies
 CREATE POLICY "Users can view own referrals" ON referrals FOR SELECT USING (referrer_id = auth.uid() OR referred_id = auth.uid());
 CREATE POLICY "Service role manages referrals" ON referrals FOR ALL USING (auth.role() = 'service_role');
 
 -- Daily rewards policies
 CREATE POLICY "Users can manage own daily rewards" ON daily_rewards FOR ALL USING (user_id = auth.uid());
+CREATE POLICY "Service role manages daily_rewards" ON daily_rewards FOR ALL USING (auth.role() = 'service_role');
 
 -- Boosts policies
 CREATE POLICY "Users can view own boosts" ON boosts FOR SELECT USING (user_id = auth.uid());
 CREATE POLICY "Service role manages boosts" ON boosts FOR ALL USING (auth.role() = 'service_role');
 
--- Analytics policies
+-- Analytics policies (allow anonymous inserts for unauthenticated tracking)
 CREATE POLICY "Users can insert own analytics" ON analytics_events FOR INSERT WITH CHECK (user_id = auth.uid() OR user_id IS NULL);
 CREATE POLICY "Service role full access to analytics" ON analytics_events FOR ALL USING (auth.role() = 'service_role');
 
@@ -963,70 +1198,84 @@ CREATE POLICY "Service role manages reports" ON content_reports FOR ALL USING (a
 
 -- Push tokens policies
 CREATE POLICY "Users can manage own push tokens" ON push_tokens FOR ALL USING (user_id = auth.uid());
+CREATE POLICY "Service role manages push_tokens" ON push_tokens FOR ALL USING (auth.role() = 'service_role');
 
 -- Scheduled notifications policies
 CREATE POLICY "Users can view own notifications" ON scheduled_notifications FOR SELECT USING (user_id = auth.uid());
 CREATE POLICY "Service role manages notifications" ON scheduled_notifications FOR ALL USING (auth.role() = 'service_role');
 
--- Webhook events policies
+-- Webhook events policies (service role only)
 CREATE POLICY "Service role manages webhook events" ON webhook_events FOR ALL USING (auth.role() = 'service_role');
 
 -- ===========================================
 -- SEED DATA - Default Personas
+-- Uses ON CONFLICT DO NOTHING for idempotency
 -- ===========================================
-INSERT INTO personas (id, name, persona_type, is_public, tagline, description, personality, greeting_message)
+INSERT INTO personas (name, persona_type, is_public, tagline, description, personality, greeting_message)
 VALUES
-  (gen_random_uuid(), 'Luna', 'friend', true, 'Your supportive AI bestie', 'Luna is a warm, empathetic friend who''s always there to listen and support you through anything.',
+  ('Luna', 'friend', true, 'Your supportive AI bestie', 'Luna is a warm, empathetic friend who''s always there to listen and support you through anything.',
    '{"traits": ["supportive", "empathetic", "warm"], "speaking_style": "friendly", "emotional_range": "high", "humor_level": "moderate", "formality": "casual", "empathy_level": "very_high", "assertiveness": "gentle"}',
    'Hey there! I''m Luna, and I''m so happy to meet you! How are you doing today?'),
 
-  (gen_random_uuid(), 'Max', 'trainer', true, 'Your AI fitness coach', 'Max is an energetic personal trainer who motivates you to reach your fitness goals.',
+  ('Max', 'trainer', true, 'Your AI fitness coach', 'Max is an energetic personal trainer who motivates you to reach your fitness goals.',
    '{"traits": ["motivating", "energetic", "disciplined"], "speaking_style": "encouraging", "emotional_range": "positive", "humor_level": "moderate", "formality": "casual", "empathy_level": "moderate", "assertiveness": "high"}',
    'What''s up, champ! Ready to crush some goals today? Let''s get after it!'),
 
-  (gen_random_uuid(), 'Sage', 'mentor', true, 'Wisdom for your journey', 'Sage is a thoughtful mentor who provides guidance and helps you navigate life''s challenges.',
+  ('Sage', 'mentor', true, 'Wisdom for your journey', 'Sage is a thoughtful mentor who provides guidance and helps you navigate life''s challenges.',
    '{"traits": ["wise", "patient", "thoughtful"], "speaking_style": "calm", "emotional_range": "balanced", "humor_level": "subtle", "formality": "balanced", "empathy_level": "high", "assertiveness": "moderate"}',
    'Welcome, seeker. I sense you have questions. Let''s explore them together.'),
 
-  (gen_random_uuid(), 'Aria', 'creative', true, 'Your creative muse', 'Aria is an artistic soul who inspires creativity and helps bring your ideas to life.',
+  ('Aria', 'creative', true, 'Your creative muse', 'Aria is an artistic soul who inspires creativity and helps bring your ideas to life.',
    '{"traits": ["creative", "inspiring", "imaginative"], "speaking_style": "artistic", "emotional_range": "expressive", "humor_level": "playful", "formality": "casual", "empathy_level": "high", "assertiveness": "gentle"}',
    'Oh, hello there, beautiful soul! I can already sense the creativity flowing through you. What shall we create today?'),
 
-  (gen_random_uuid(), 'Rex', 'hype', true, 'Your biggest fan', 'Rex is your ultimate hype person who celebrates your wins and pumps you up.',
+  ('Rex', 'hype', true, 'Your biggest fan', 'Rex is your ultimate hype person who celebrates your wins and pumps you up.',
    '{"traits": ["enthusiastic", "supportive", "energetic"], "speaking_style": "excited", "emotional_range": "very_high", "humor_level": "high", "formality": "very_casual", "empathy_level": "moderate", "assertiveness": "high"}',
    'YOOOO! What''s good?! I''ve been waiting all day to see what amazing things you''ve been up to!')
-ON CONFLICT DO NOTHING;
+ON CONFLICT (name) DO NOTHING;
 
 -- ===========================================
 -- SEED DATA - Default Worlds
+-- Uses ON CONFLICT DO NOTHING for idempotency
 -- ===========================================
-INSERT INTO worlds (id, name, theme, is_public, tagline, description, setting_description, atmosphere)
+INSERT INTO worlds (name, theme, is_public, tagline, description, setting_description, atmosphere)
 VALUES
-  (gen_random_uuid(), 'Neon City', 'cyber', true, 'A cyberpunk metropolis', 'A sprawling neon-lit city where technology and humanity intertwine.',
+  ('Neon City', 'cyber', true, 'A cyberpunk metropolis', 'A sprawling neon-lit city where technology and humanity intertwine.',
    'Towering skyscrapers pierce through perpetual smog, their surfaces alive with holographic advertisements. Flying vehicles zip between buildings as rain reflects the countless neon signs below.',
    'Electric, mysterious, futuristic'),
 
-  (gen_random_uuid(), 'Sunset Beach', 'tropical', true, 'Paradise awaits', 'A serene tropical paradise with crystal waters and golden sands.',
+  ('Sunset Beach', 'tropical', true, 'Paradise awaits', 'A serene tropical paradise with crystal waters and golden sands.',
    'Warm sand between your toes, gentle waves lapping at the shore. Palm trees sway in the ocean breeze as the sun paints the sky in shades of orange and pink.',
    'Relaxing, warm, peaceful'),
 
-  (gen_random_uuid(), 'Cosmic Station', 'space', true, 'Among the stars', 'A space station orbiting a distant planet, gateway to the cosmos.',
+  ('Cosmic Station', 'space', true, 'Among the stars', 'A space station orbiting a distant planet, gateway to the cosmos.',
    'Stars stretch infinitely outside the observation deck. The station hums with advanced technology as ships dock and depart, carrying explorers to unknown worlds.',
    'Awe-inspiring, vast, adventurous'),
 
-  (gen_random_uuid(), 'Mystic Grove', 'fantasy', true, 'Where magic lives', 'An enchanted forest where ancient magic flows through every living thing.',
+  ('Mystic Grove', 'fantasy', true, 'Where magic lives', 'An enchanted forest where ancient magic flows through every living thing.',
    'Towering ancient trees with luminescent bark, magical creatures peeking from the underbrush. Floating lights dance through the air as mystical energy pulses through the land.',
    'Magical, mysterious, enchanting'),
 
-  (gen_random_uuid(), 'Velvet Lounge', 'luxury', true, 'Elegance redefined', 'An upscale lounge where sophistication meets comfort.',
+  ('Velvet Lounge', 'luxury', true, 'Elegance redefined', 'An upscale lounge where sophistication meets comfort.',
    'Plush velvet seating, soft jazz playing in the background. Crystal chandeliers cast warm light across marble floors as champagne flows freely.',
    'Sophisticated, intimate, luxurious')
-ON CONFLICT DO NOTHING;
+ON CONFLICT (name) DO NOTHING;
 
-COMMENT ON TABLE profiles IS 'User profiles with subscription and credit information';
+-- ===========================================
+-- TABLE COMMENTS
+-- ===========================================
+COMMENT ON TABLE profiles IS 'User profiles with subscription and credit information. Supports soft-delete for GDPR compliance.';
+COMMENT ON TABLE credit_audit_log IS 'Audit log for all credit balance modifications. Used for compliance and debugging.';
 COMMENT ON TABLE personas IS 'AI companion personas available in the app';
 COMMENT ON TABLE worlds IS 'Immersive environment themes for conversations';
 COMMENT ON TABLE conversations IS 'Chat sessions between users and AI personas';
 COMMENT ON TABLE messages IS 'Individual messages in conversations';
-COMMENT ON TABLE memories IS 'Long-term memory storage for AI personas';
+COMMENT ON TABLE memories IS 'Long-term memory storage for AI personas with vector embeddings';
 COMMENT ON TABLE subscriptions IS 'User subscription records from payment providers';
+COMMENT ON TABLE webhook_events IS 'Processed webhook events for idempotency';
+
+COMMENT ON FUNCTION increment_credits IS 'Atomically add credits to user balance with audit logging';
+COMMENT ON FUNCTION deduct_credits IS 'Atomically deduct credits with validation and audit logging';
+COMMENT ON FUNCTION reset_monthly_credits IS 'Reset credits on subscription renewal with audit logging';
+COMMENT ON FUNCTION search_memories IS 'Vector similarity search for persona memories using HNSW index';
+COMMENT ON FUNCTION soft_delete_profile IS 'Soft delete user profile with PII anonymization';
