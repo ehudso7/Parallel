@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Button, Input } from '@parallel/ui';
 import { toast } from '@parallel/ui';
 import { Sparkles, Mail, Lock, Eye, EyeOff } from 'lucide-react';
-import { getSupabase } from '@/lib/supabase/client';
+import { getSupabase, isSupabaseConfigured } from '@/lib/supabase/client';
 
 // Validate redirect URL to prevent open redirect attacks
 function getSafeRedirectUrl(redirect: string | null): string {
@@ -33,6 +33,9 @@ function LoginForm() {
     setIsLoading(true);
 
     try {
+      if (!isSupabaseConfigured()) {
+        throw new Error('Authentication service is not configured. Please contact support.');
+      }
       const supabase = getSupabase();
       const { error } = await supabase.auth.signInWithPassword({
         email,
@@ -57,6 +60,9 @@ function LoginForm() {
 
   const handleOAuthLogin = async (provider: 'google' | 'apple' | 'discord') => {
     try {
+      if (!isSupabaseConfigured()) {
+        throw new Error('Authentication service is not configured. Please contact support.');
+      }
       const supabase = getSupabase();
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
