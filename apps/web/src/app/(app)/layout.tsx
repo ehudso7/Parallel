@@ -3,6 +3,9 @@ import { createClient } from '@/lib/supabase/server';
 import { Sidebar } from '@/components/sidebar';
 import { MobileNav } from '@/components/mobile-nav';
 
+// Force dynamic rendering - all (app) routes require authentication
+export const dynamic = 'force-dynamic';
+
 export default async function AppLayout({
   children,
 }: {

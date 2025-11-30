@@ -101,7 +101,17 @@ export async function updateSession(request: NextRequest) {
     return supabaseResponse;
   } catch (error) {
     console.error('[Middleware] Unexpected error:', error);
-    // On error, allow request to proceed but don't protect routes
+
+    // On error, redirect protected paths to login for safety
+    const isProtectedPath = PROTECTED_PATHS.some((path) => pathname.startsWith(path));
+    if (isProtectedPath) {
+      const url = request.nextUrl.clone();
+      url.pathname = '/login';
+      url.searchParams.set('error', 'auth_error');
+      return NextResponse.redirect(url);
+    }
+
+    // Allow non-protected paths to proceed
     return NextResponse.next({ request });
   }
 }

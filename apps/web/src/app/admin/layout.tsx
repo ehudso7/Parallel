@@ -13,6 +13,9 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 
+// Force dynamic rendering - admin routes require authentication
+export const dynamic = 'force-dynamic';
+
 export default async function AdminLayout({
   children,
 }: {

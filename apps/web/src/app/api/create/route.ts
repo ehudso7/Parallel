@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { CreatorEngineAgent } from '@parallel/ai';
 
-// Valid content types
+// Valid content types supported by the creation pipeline
+// Note: Database schema defines additional types (story, post, reel, cover) that are
+// reserved for future implementation once the respective generation providers are integrated
 const VALID_CONTENT_TYPES = ['music', 'video', 'image', 'meme'] as const;
 type ContentType = (typeof VALID_CONTENT_TYPES)[number];
 
