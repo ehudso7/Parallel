@@ -83,9 +83,9 @@ export default function HomePage() {
                   <ArrowRight className="w-5 h-5 ml-2" />
                 </Button>
               </Link>
-              <Link href="#demo">
+              <Link href="#features">
                 <Button size="xl" variant="outline" className="w-full sm:w-auto">
-                  Watch Demo
+                  Explore Features
                 </Button>
               </Link>
             </div>
@@ -112,14 +112,73 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Hero image/preview */}
+          {/* Hero image/preview - App Mockup */}
           <div className="mt-16 relative">
-            <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent z-10" />
-            <div className="rounded-2xl overflow-hidden border border-white/10 shadow-2xl">
-              <div className="aspect-video bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center">
-                <div className="text-center">
-                  <MessageCircle className="w-16 h-16 text-violet-500 mx-auto mb-4" />
-                  <p className="text-white/60">App Preview</p>
+            <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent z-10 pointer-events-none" />
+            <div className="rounded-2xl overflow-hidden border border-white/10 shadow-2xl bg-gradient-to-br from-slate-800 to-slate-900">
+              <div className="aspect-video flex">
+                {/* Sidebar mockup */}
+                <div className="w-64 border-r border-white/10 p-4 hidden md:block">
+                  <div className="flex items-center gap-2 mb-6">
+                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center">
+                      <Sparkles className="w-4 h-4 text-white" />
+                    </div>
+                    <span className="font-semibold text-white">Parallel</span>
+                  </div>
+                  <div className="space-y-2">
+                    {['Dashboard', 'My Companions', 'Worlds', 'Create'].map((item, i) => (
+                      <div key={i} className={`px-3 py-2 rounded-lg ${i === 1 ? 'bg-violet-500/20 text-violet-400' : 'text-white/60'}`}>
+                        {item}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-6 pt-6 border-t border-white/10">
+                    <p className="text-xs text-white/40 mb-3">Your Companions</p>
+                    {['Luna', 'Atlas', 'Nova'].map((name, i) => (
+                      <div key={i} className="flex items-center gap-2 py-2 text-white/70 hover:text-white cursor-pointer">
+                        <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${i === 0 ? 'from-pink-500 to-rose-500' : i === 1 ? 'from-blue-500 to-cyan-500' : 'from-amber-500 to-orange-500'}`} />
+                        <span className="text-sm">{name}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                {/* Chat mockup */}
+                <div className="flex-1 flex flex-col">
+                  {/* Chat header */}
+                  <div className="p-4 border-b border-white/10 flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-pink-500 to-rose-500" />
+                    <div>
+                      <p className="font-semibold text-white">Luna</p>
+                      <p className="text-xs text-green-400">Online</p>
+                    </div>
+                  </div>
+                  {/* Chat messages */}
+                  <div className="flex-1 p-4 space-y-4 overflow-hidden">
+                    <div className="flex gap-3">
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-pink-500 to-rose-500 flex-shrink-0" />
+                      <div className="bg-white/10 rounded-2xl rounded-tl-none px-4 py-2 max-w-xs">
+                        <p className="text-white/90 text-sm">Hey! Ready to explore Cyber Tokyo together? I heard there&apos;s a new district to discover! 🌃</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3 justify-end">
+                      <div className="bg-gradient-to-r from-violet-600 to-fuchsia-600 rounded-2xl rounded-tr-none px-4 py-2 max-w-xs">
+                        <p className="text-white text-sm">Yes! Let&apos;s go! Can you show me the neon market?</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-pink-500 to-rose-500 flex-shrink-0" />
+                      <div className="bg-white/10 rounded-2xl rounded-tl-none px-4 py-2 max-w-xs">
+                        <p className="text-white/90 text-sm">Of course! Follow me... ✨</p>
+                      </div>
+                    </div>
+                  </div>
+                  {/* Chat input */}
+                  <div className="p-4 border-t border-white/10">
+                    <div className="flex items-center gap-2 bg-white/5 rounded-xl px-4 py-3">
+                      <MessageCircle className="w-5 h-5 text-white/40" />
+                      <span className="text-white/40 text-sm">Type a message...</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -220,14 +279,15 @@ export default function HomePage() {
 
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
             {[
-              { name: 'Cyber Tokyo', theme: 'cyber', color: 'from-cyan-500 to-blue-600' },
-              { name: 'Monte Carlo', theme: 'luxury', color: 'from-amber-500 to-orange-600' },
-              { name: 'Space Station', theme: 'space', color: 'from-purple-500 to-violet-600' },
-              { name: 'Tropical Paradise', theme: 'tropical', color: 'from-green-500 to-emerald-600' },
+              { name: 'Cyber Tokyo', theme: 'cyber', color: 'from-cyan-500 to-blue-600', slug: 'cyber-tokyo' },
+              { name: 'Monte Carlo', theme: 'luxury', color: 'from-amber-500 to-orange-600', slug: 'monte-carlo' },
+              { name: 'Space Station', theme: 'space', color: 'from-purple-500 to-violet-600', slug: 'space-station' },
+              { name: 'Tropical Paradise', theme: 'tropical', color: 'from-green-500 to-emerald-600', slug: 'tropical-paradise' },
             ].map((world, i) => (
-              <div
+              <Link
                 key={i}
-                className="group relative aspect-[3/4] rounded-2xl overflow-hidden cursor-pointer"
+                href={`/signup?world=${world.slug}`}
+                className="group relative aspect-[3/4] rounded-2xl overflow-hidden cursor-pointer block"
               >
                 <div
                   className={`absolute inset-0 bg-gradient-to-br ${world.color} opacity-80 group-hover:opacity-90 transition`}
@@ -238,7 +298,7 @@ export default function HomePage() {
                     <p className="text-white/80 text-sm capitalize">{world.theme}</p>
                   </div>
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
         </div>
@@ -272,9 +332,11 @@ export default function HomePage() {
                   </li>
                 ))}
               </ul>
-              <Button variant="outline" className="w-full">
-                Get Started
-              </Button>
+              <Link href="/signup">
+                <Button variant="outline" className="w-full">
+                  Get Started
+                </Button>
+              </Link>
             </div>
 
             {/* Pro tier */}
@@ -302,9 +364,11 @@ export default function HomePage() {
                   </li>
                 ))}
               </ul>
-              <Button variant="glow" className="w-full">
-                Subscribe Now
-              </Button>
+              <Link href="/signup?plan=pro">
+                <Button variant="glow" className="w-full">
+                  Subscribe Now
+                </Button>
+              </Link>
             </div>
 
             {/* Studio tier */}
@@ -329,9 +393,11 @@ export default function HomePage() {
                   </li>
                 ))}
               </ul>
-              <Button variant="premium" className="w-full">
-                Contact Sales
-              </Button>
+              <Link href="/signup?plan=studio">
+                <Button variant="premium" className="w-full">
+                  Contact Sales
+                </Button>
+              </Link>
             </div>
           </div>
         </div>

@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Button, Input } from '@parallel/ui';
 import { toast } from '@parallel/ui';
 import { Sparkles, Mail, Lock, User, Eye, EyeOff, Gift } from 'lucide-react';
-import { getSupabase } from '@/lib/supabase/client';
+import { getSupabase, isSupabaseConfigured } from '@/lib/supabase/client';
 
 function SignupForm() {
   const router = useRouter();
@@ -32,6 +32,9 @@ function SignupForm() {
     setIsLoading(true);
 
     try {
+      if (!isSupabaseConfigured()) {
+        throw new Error('Authentication service is not configured. Please contact support.');
+      }
       const supabase = getSupabase();
 
       // Sign up user
@@ -93,6 +96,9 @@ function SignupForm() {
 
   const handleOAuthSignup = async (provider: 'google' | 'apple' | 'discord') => {
     try {
+      if (!isSupabaseConfigured()) {
+        throw new Error('Authentication service is not configured. Please contact support.');
+      }
       const supabase = getSupabase();
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
