@@ -1071,6 +1071,9 @@ EXCEPTION
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_catalog;
 
+-- Restrict direct invocation (trigger execution is unaffected)
+REVOKE EXECUTE ON FUNCTION handle_new_user FROM PUBLIC;
+
 -- Create trigger for new user
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
